@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package convergence.v1;
+
+option go_package = "convergence/server/gen/convergence/v1;convergencev1";
+
+// Bump when a change breaks older clients. The server rejects mismatches in Hello.
+enum ProtocolVersion {
+  PROTOCOL_VERSION_UNSPECIFIED = 0;
+  PROTOCOL_VERSION_CURRENT = 1;
+}
+
+message Vec3 {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Client -> Server. Every WebSocket binary frame from the client is one
+// ClientMessage.
+// ---------------------------------------------------------------------------
+
+message ClientMessage {
+  oneof payload {
+    Hello hello = 10;
+    MoveInput move = 11;
+    Ping ping = 12;
+  }
+}
+
+// First message on a new connection. The token comes from the HTTP login.
+message Hello {
+  string token = 1;
+  uint32 protocol_version = 2;
+}
+
+// One fixed-length step of player input (one server tick). The client sends
+// one per tick while the player is moving or turning, and predicts the result
+// locally. The server applies them in order and acknowledges the last one
+// in every Snapshot.
+message MoveInput {
+  uint32 seq = 1;
+  // Desired direction on the ground plane. The server clamps the length to 1.
+  float dir_x = 2;
+  float dir_z = 3;
+  // Facing in radians around the Y axis.
+  float yaw = 4;
+}
+
+message Ping {
+  uint64 client_time_ms = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Server -> Client. Every WebSocket binary frame from the server is one
+// ServerMessage.
+// ---------------------------------------------------------------------------
+
+message ServerMessage {
+  oneof payload {
+    Welcome welcome = 10;
+    Snapshot snapshot = 11;
+    Pong pong = 12;
+    ServerError error = 13;
+  }
+}
+
+message Welcome {
+  uint32 entity_id = 1;
+  string zone_id = 2;
+  uint32 tick_rate = 3;
+  uint32 server_tick = 4;
+  // Movement rules the client needs to predict exactly like the server.
+  float move_speed = 5;
+  Vec3 spawn = 6;
+  // Walkable square is [-half_extent, half_extent] on X and Z.
+  float half_extent = 7;
+}
+
+message EntityState {
+  uint32 id = 1;
+  Vec3 pos = 2;
+  float yaw = 3;
+  bool moving = 4;
+}
+
+message EntitySpawn {
+  uint32 id = 1;
+  string name = 2;
+  // Character model key, resolved by the client (e.g. "mannequin_f").
+  string model = 3;
+  EntityState state = 4;
+}
+
+// Sent every tick. Spawns and despawns are relative to what this client
+// already knows, so each client gets its own Snapshot.
+message Snapshot {
+  uint32 tick = 1;
+  // Last MoveInput.seq the server applied for this client's own entity.
+  uint32 ack_input_seq = 2;
+  repeated EntityState entities = 3;
+  repeated EntitySpawn spawns = 4;
+  repeated uint32 despawns = 5;
+}
+
+message Pong {
+  uint64 client_time_ms = 1;
+  uint32 server_tick = 2;
+}
+
+message ServerError {
+  string code = 1;
+  string message = 2;
+}

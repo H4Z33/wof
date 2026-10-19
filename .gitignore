@@ -1,0 +1,11 @@
+# Build output
+server/bin/
+tools/bin/
+*.exe
+
+# Godot
+client/.godot/
+client/export/
+
+# Python
+__pycache__/
