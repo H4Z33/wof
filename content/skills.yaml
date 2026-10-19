@@ -1,0 +1,19 @@
+# Player skills. M1 skills are pure data (damage in a range); Lua-scripted
+# skills arrive with the class system in M2.
+skills:
+  - id: 1
+    key: strike
+    name: Strike
+    range: 2.5
+    cooldown_ms: 1200
+    damage: [8, 12]
+    anim: Punch_Cross
+
+  - id: 2
+    key: qi_bolt
+    name: Qi Bolt
+    range: 20
+    cooldown_ms: 3000
+    damage: [14, 20]
+    anim: Spell_Simple_Shoot
+    projectile: true

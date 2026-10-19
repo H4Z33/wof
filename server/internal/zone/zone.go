@@ -6,16 +6,21 @@ package zone
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"math/rand/v2"
+	"sort"
 	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
 
 	pb "convergence/server/gen/convergence/v1"
-	"convergence/server/internal/auth"
+	"convergence/server/internal/content"
+	"convergence/server/internal/model"
+	"convergence/server/internal/rules"
+	"convergence/server/internal/script"
 )
 
 // Conn is the zone's view of a client connection. Send must not block.
@@ -24,22 +29,37 @@ type Conn interface {
 	Close(reason string)
 }
 
+// Saver persists characters without blocking the zone.
+type Saver interface {
+	Save(model.Character)
+}
+
 type Config struct {
 	ID       string
 	TickRate int
-	// MoveSpeed in meters per second.
+	// MoveSpeed in meters per second (players).
 	MoveSpeed float64
 	// The walkable area is the square [-HalfExtent, HalfExtent] on X and Z.
 	HalfExtent float64
 	Spawn      [3]float64
-	// Players appear at a random point within this radius of Spawn so they
-	// do not stack on top of each other.
+	// Players appear within this radius of Spawn so they do not stack.
 	SpawnRadius float64
 	// Input credit: each tick earns one MoveInput; unused credit accumulates
 	// up to this cap so a client can catch up after network jitter, but can
 	// never move faster than one input per tick on average.
 	MaxInputCredit int
 	MaxPlayers     int
+	// Interest grid cell size; players see entities up to 1-2 cells away.
+	CellSize float64
+	// Dirty characters are saved at least this often.
+	SaveInterval time.Duration
+	// How long a dead player waits before respawning at Spawn.
+	RespawnDelay time.Duration
+	// Out of combat for this long, players regenerate health.
+	RegenDelay time.Duration
+	// NPC AI runs every ThinkEvery ticks, within LuaBudget per tick.
+	ThinkEvery int
+	LuaBudget  time.Duration
 }
 
 func DefaultConfig() Config {
@@ -51,7 +71,23 @@ func DefaultConfig() Config {
 		SpawnRadius:    3,
 		MaxInputCredit: 5,
 		MaxPlayers:     500,
+		CellSize:       24,
+		SaveInterval:   30 * time.Second,
+		RespawnDelay:   5 * time.Second,
+		RegenDelay:     8 * time.Second,
+		ThinkEvery:     4,
+		LuaBudget:      5 * time.Millisecond,
 	}
+}
+
+// ConfigFor applies a zone's content on top of the defaults.
+func ConfigFor(z *content.Zone) Config {
+	cfg := DefaultConfig()
+	cfg.ID = z.ID
+	cfg.HalfExtent = z.HalfExtent
+	cfg.Spawn = [3]float64{z.Spawn[0], 0, z.Spawn[1]}
+	cfg.SpawnRadius = z.SpawnRadius
+	return cfg
 }
 
 var (
@@ -59,25 +95,8 @@ var (
 	ErrZoneStopped = errors.New("zone stopped")
 )
 
-type player struct {
-	id     uint32
-	name   string
-	model  string
-	conn   Conn
-	pos    [3]float64
-	yaw    float64
-	moving bool
-
-	pending   []*pb.MoveInput
-	credit    int
-	lastSeq   uint32
-	idleTicks int
-	// Entities this client has been told about (spawned and not despawned).
-	known map[uint32]bool
-}
-
 type joinReq struct {
-	id    auth.Identity
+	char  model.Character
 	conn  Conn
 	reply chan joinResult
 }
@@ -90,32 +109,67 @@ type joinResult struct {
 type leaveReq struct{ id uint32 }
 
 type inputMsg struct {
-	id uint32
-	in *pb.MoveInput
+	id    uint32
+	move  *pb.MoveInput
+	skill *pb.UseSkill
 }
 
 type Zone struct {
-	cfg    Config
-	log    *slog.Logger
-	inbox  chan any
-	inputs chan inputMsg
-	done   chan struct{} // closed when Run returns
-	tick   atomic.Uint32
+	cfg     Config
+	content *content.Content
+	saver   Saver
+	log     *slog.Logger
+	inbox   chan any
+	inputs  chan inputMsg
+	done    chan struct{} // closed when Run returns
+	tick    atomic.Uint32
 
 	// Owned by the Run goroutine.
-	players map[uint32]*player
-	nextID  uint32
+	entities map[uint32]*entity
+	players  map[uint32]*player // by entity id
+	byChar   map[int64]uint32   // character id -> entity id
+	npcs     []*npc
+	grid     *grid
+	lua      *script.Engine
+	events   []*pb.CombatEvent
+	skills   []*pb.SkillInfo
+	nextID   uint32
 }
 
-func New(cfg Config, log *slog.Logger) *Zone {
-	return &Zone{
-		cfg:     cfg,
-		log:     log.With("zone", cfg.ID),
-		inbox:   make(chan any, 64),
-		inputs:  make(chan inputMsg, 4096),
-		done:    make(chan struct{}),
-		players: make(map[uint32]*player),
+// New builds a zone and spawns its NPCs. zc may be nil (no NPCs); saver may
+// be nil (nothing is persisted).
+func New(cfg Config, c *content.Content, zc *content.Zone, saver Saver, log *slog.Logger) (*Zone, error) {
+	if c == nil {
+		c = &content.Content{}
 	}
+	z := &Zone{
+		cfg:      cfg,
+		content:  c,
+		saver:    saver,
+		log:      log.With("zone", cfg.ID),
+		inbox:    make(chan any, 64),
+		inputs:   make(chan inputMsg, 4096),
+		done:     make(chan struct{}),
+		entities: make(map[uint32]*entity),
+		players:  make(map[uint32]*player),
+		byChar:   make(map[int64]uint32),
+		grid:     newGrid(cfg.CellSize),
+		lua:      script.New(log),
+	}
+	for _, s := range c.Skills {
+		z.skills = append(z.skills, &pb.SkillInfo{
+			Id: s.ID, Name: s.Name, Range: float32(s.Range), CooldownMs: uint32(s.CooldownMS),
+			Anim: s.Anim, Projectile: s.Projectile,
+		})
+	}
+	sort.Slice(z.skills, func(i, j int) bool { return z.skills[i].Id < z.skills[j].Id })
+	if zc != nil {
+		if err := z.spawnGroups(zc); err != nil {
+			z.lua.Close()
+			return nil, err
+		}
+	}
+	return z, nil
 }
 
 func (z *Zone) Config() Config { return z.cfg }
@@ -123,9 +177,13 @@ func (z *Zone) Config() Config { return z.cfg }
 // Tick is the current server tick. Safe from any goroutine.
 func (z *Zone) Tick() uint32 { return z.tick.Load() }
 
-// Join adds a player and returns the handle the gateway uses to forward input.
-func (z *Zone) Join(ctx context.Context, id auth.Identity, c Conn) (*Handle, error) {
-	req := joinReq{id: id, conn: c, reply: make(chan joinResult, 1)}
+// Done is closed once Run has returned and every player has been saved.
+func (z *Zone) Done() <-chan struct{} { return z.done }
+
+// Join adds a character and returns the handle the gateway uses to forward
+// input. A character already online is disconnected first.
+func (z *Zone) Join(ctx context.Context, c model.Character, conn Conn) (*Handle, error) {
+	req := joinReq{char: c, conn: conn, reply: make(chan joinResult, 1)}
 	select {
 	case z.inbox <- req:
 	case <-z.done:
@@ -153,7 +211,15 @@ func (h *Handle) EntityID() uint32 { return h.id }
 // overloaded, and the client's prediction gets corrected.
 func (h *Handle) Input(in *pb.MoveInput) {
 	select {
-	case h.z.inputs <- inputMsg{id: h.id, in: in}:
+	case h.z.inputs <- inputMsg{id: h.id, move: in}:
+	default:
+	}
+}
+
+// UseSkill queues a skill request. Never blocks.
+func (h *Handle) UseSkill(req *pb.UseSkill) {
+	select {
+	case h.z.inputs <- inputMsg{id: h.id, skill: req}:
 	default:
 	}
 }
@@ -171,11 +237,13 @@ func (z *Zone) Run(ctx context.Context) {
 	ticker := time.NewTicker(dt)
 	defer ticker.Stop()
 	defer close(z.done)
-	z.log.Info("zone started", "tick_rate", z.cfg.TickRate)
+	defer z.lua.Close()
+	z.log.Info("zone started", "tick_rate", z.cfg.TickRate, "npcs", len(z.npcs))
 	for {
 		select {
 		case <-ctx.Done():
 			for _, p := range z.players {
+				z.save(p)
 				p.conn.Close("server shutting down")
 			}
 			z.log.Info("zone stopped")
@@ -183,7 +251,7 @@ func (z *Zone) Run(ctx context.Context) {
 		case cmd := <-z.inbox:
 			z.handleCmd(cmd)
 		case m := <-z.inputs:
-			z.queueInput(m)
+			z.handleInput(m)
 		case <-ticker.C:
 			z.step()
 		}
@@ -193,52 +261,136 @@ func (z *Zone) Run(ctx context.Context) {
 func (z *Zone) handleCmd(cmd any) {
 	switch c := cmd.(type) {
 	case joinReq:
-		h, err := z.join(c.id, c.conn)
+		h, err := z.join(c.char, c.conn)
 		c.reply <- joinResult{handle: h, err: err}
 	case leaveReq:
 		if p, ok := z.players[c.id]; ok {
-			delete(z.players, c.id)
-			z.log.Info("player left", "entity", c.id, "name", p.name, "players", len(z.players))
+			z.removePlayer(p)
+			z.log.Info("player left", "entity", c.id, "name", p.e.name, "players", len(z.players))
 		}
 	}
 }
 
-func (z *Zone) join(id auth.Identity, c Conn) (*Handle, error) {
+func (z *Zone) newID() uint32 {
+	z.nextID++
+	return z.nextID
+}
+
+func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
+	if old, ok := z.byChar[c.ID]; ok {
+		p := z.players[old]
+		z.log.Info("character logged in again, dropping old session", "character", c.ID)
+		p.conn.Close("logged in from another place")
+		z.removePlayer(p)
+		// The new session continues from the old one's latest state.
+		c = z.record(p)
+	}
 	if len(z.players) >= z.cfg.MaxPlayers {
 		return nil, ErrZoneFull
 	}
-	z.nextID++
-	p := &player{
-		id:     z.nextID,
-		name:   id.Name,
-		model:  id.Model,
-		conn:   c,
-		pos:    z.spawnPoint(),
-		credit: z.cfg.MaxInputCredit,
-		known:  make(map[uint32]bool),
+	level := max(c.Level, 1)
+	e := &entity{
+		id:    z.newID(),
+		kind:  pb.EntityKind_ENTITY_KIND_PLAYER,
+		name:  c.Name,
+		model: c.Model,
+		level: level,
+		pos:   c.Pos,
+		yaw:   c.Yaw,
+		hp:    c.HP,
+		maxHP: rules.MaxHP(level),
 	}
-	z.players[p.id] = p
+	if c.ZoneID != z.cfg.ID || !z.inBounds(e.pos) {
+		e.pos = z.spawnPoint()
+	}
+	if e.hp <= 0 || e.hp > e.maxHP {
+		// Logged out dead (or data from an older formula): start fresh at spawn.
+		if e.hp <= 0 {
+			e.pos = z.spawnPoint()
+		}
+		e.hp = e.maxHP
+	}
+	p := &player{
+		e:         e,
+		charID:    c.ID,
+		accountID: c.AccountID,
+		conn:      conn,
+		credit:    z.cfg.MaxInputCredit,
+		exp:       c.Exp,
+		cooldowns: make(map[uint32]uint32),
+		lastSave:  z.tick.Load(),
+		known:     make(map[uint32]bool),
+		visible:   make(map[uint32]*entity),
+	}
+	e.player = p
+	z.entities[e.id] = e
+	z.players[e.id] = p
+	z.byChar[c.ID] = e.id
+	z.grid.add(e)
+
 	z.send(p, &pb.ServerMessage{Payload: &pb.ServerMessage_Welcome{Welcome: &pb.Welcome{
-		EntityId:   p.id,
-		ZoneId:     z.cfg.ID,
-		TickRate:   uint32(z.cfg.TickRate),
-		ServerTick: z.tick.Load(),
-		MoveSpeed:  float32(z.cfg.MoveSpeed),
-		Spawn:      vec(p.pos),
-		HalfExtent: float32(z.cfg.HalfExtent),
+		EntityId:      e.id,
+		ZoneId:        z.cfg.ID,
+		TickRate:      uint32(z.cfg.TickRate),
+		ServerTick:    z.tick.Load(),
+		MoveSpeed:     float32(z.cfg.MoveSpeed),
+		Spawn:         vec(e.pos),
+		HalfExtent:    float32(z.cfg.HalfExtent),
+		Skills:        z.skills,
+		Status:        z.status(p),
+		CharacterName: c.Name,
 	}}})
-	z.log.Info("player joined", "entity", p.id, "name", p.name, "model", p.model, "players", len(z.players))
-	return &Handle{z: z, id: p.id}, nil
+	z.log.Info("player joined", "entity", e.id, "name", e.name, "character", c.ID, "players", len(z.players))
+	return &Handle{z: z, id: e.id}, nil
 }
 
-const maxPending = 32
+func (z *Zone) removePlayer(p *player) {
+	z.save(p)
+	z.grid.remove(p.e)
+	delete(z.entities, p.e.id)
+	delete(z.players, p.e.id)
+	if z.byChar[p.charID] == p.e.id {
+		delete(z.byChar, p.charID)
+	}
+}
 
-func (z *Zone) queueInput(m inputMsg) {
+// record is the character as it should be stored.
+func (z *Zone) record(p *player) model.Character {
+	return model.Character{
+		ID:        p.charID,
+		AccountID: p.accountID,
+		Name:      p.e.name,
+		Model:     p.e.model,
+		ZoneID:    z.cfg.ID,
+		Pos:       p.e.pos,
+		Yaw:       p.e.yaw,
+		Level:     p.e.level,
+		Exp:       p.exp,
+		HP:        p.e.hp,
+	}
+}
+
+func (z *Zone) save(p *player) {
+	p.dirty = false
+	p.lastSave = z.tick.Load()
+	if z.saver != nil {
+		z.saver.Save(z.record(p))
+	}
+}
+
+func (z *Zone) handleInput(m inputMsg) {
 	p, ok := z.players[m.id]
-	if !ok || len(p.pending) >= maxPending {
+	if !ok {
 		return
 	}
-	p.pending = append(p.pending, m.in)
+	switch {
+	case m.move != nil:
+		if len(p.pending) < maxPending {
+			p.pending = append(p.pending, m.move)
+		}
+	case m.skill != nil:
+		z.useSkill(p, m.skill)
+	}
 }
 
 func (z *Zone) step() {
@@ -247,71 +399,41 @@ func (z *Zone) step() {
 	for _, p := range z.players {
 		z.applyInputs(p, dt)
 	}
+	z.thinkNPCs(tick)
+	for _, n := range z.npcs {
+		z.moveNPC(n, dt)
+	}
+	z.updateLife(tick)
 	z.replicate(tick)
+	z.autosave(tick)
 }
 
-func (z *Zone) applyInputs(p *player, dt float64) {
-	p.credit = min(p.credit+1, z.cfg.MaxInputCredit)
-	applied := false
-	for len(p.pending) > 0 && p.credit > 0 {
-		in := p.pending[0]
-		p.pending = p.pending[1:]
-		if in.Seq <= p.lastSeq {
-			continue // duplicate or out of order
-		}
-		p.credit--
-		p.lastSeq = in.Seq
-		applied = true
-
-		dx, dz := float64(in.DirX), float64(in.DirZ)
-		if l := math.Hypot(dx, dz); l > 1 {
-			dx, dz = dx/l, dz/l
-		} else if math.IsNaN(l) {
-			dx, dz = 0, 0
-		}
-		step := z.cfg.MoveSpeed * dt
-		lim := z.cfg.HalfExtent
-		p.pos[0] = clamp(p.pos[0]+dx*step, -lim, lim)
-		p.pos[2] = clamp(p.pos[2]+dz*step, -lim, lim)
-		if y := float64(in.Yaw); !math.IsNaN(y) && !math.IsInf(y, 0) {
-			p.yaw = math.Remainder(y, 2*math.Pi)
-		}
-		p.moving = dx != 0 || dz != 0
-	}
-	if applied {
-		p.idleTicks = 0
-	} else if p.idleTicks++; p.idleTicks > 3 {
-		// Short grace period so a late packet does not flicker the animation.
-		p.moving = false
-	}
-}
-
-// replicate sends each player its own Snapshot. M0 replicates the whole zone;
-// interest management (spatial grid) arrives in M1.
-func (z *Zone) replicate(tick uint32) {
-	states := make(map[uint32]*pb.EntityState, len(z.players))
-	for id, p := range z.players {
-		states[id] = &pb.EntityState{Id: id, Pos: vec(p.pos), Yaw: float32(p.yaw), Moving: p.moving}
-	}
+func (z *Zone) autosave(tick uint32) {
+	every := z.ticks(int(z.cfg.SaveInterval / time.Millisecond))
 	for _, p := range z.players {
-		snap := &pb.Snapshot{Tick: tick, AckInputSeq: p.lastSeq}
-		for id, st := range states {
-			if p.known[id] {
-				snap.Entities = append(snap.Entities, st)
-				continue
-			}
-			o := z.players[id]
-			snap.Spawns = append(snap.Spawns, &pb.EntitySpawn{Id: id, Name: o.name, Model: o.model, State: st})
-			p.known[id] = true
+		if p.dirty && tick-p.lastSave >= every {
+			z.save(p)
 		}
-		for id := range p.known {
-			if _, ok := z.players[id]; !ok {
-				snap.Despawns = append(snap.Despawns, id)
-				delete(p.known, id)
-			}
-		}
-		z.send(p, &pb.ServerMessage{Payload: &pb.ServerMessage_Snapshot{Snapshot: snap}})
 	}
+}
+
+// ticks converts milliseconds to whole ticks, rounding up.
+func (z *Zone) ticks(ms int) uint32 {
+	return uint32((ms*z.cfg.TickRate + 999) / 1000)
+}
+
+func (z *Zone) inBounds(p [3]float64) bool {
+	return math.Abs(p[0]) <= z.cfg.HalfExtent && math.Abs(p[2]) <= z.cfg.HalfExtent
+}
+
+func (z *Zone) spawnPoint() [3]float64 {
+	return randomAround(z.cfg.Spawn, z.cfg.SpawnRadius)
+}
+
+func randomAround(c [3]float64, radius float64) [3]float64 {
+	a := rand.Float64() * 2 * math.Pi
+	r := radius * math.Sqrt(rand.Float64())
+	return [3]float64{c[0] + r*math.Cos(a), c[1], c[2] + r*math.Sin(a)}
 }
 
 func (z *Zone) send(p *player, msg *pb.ServerMessage) {
@@ -323,17 +445,14 @@ func (z *Zone) send(p *player, msg *pb.ServerMessage) {
 	p.conn.Send(b)
 }
 
-func (z *Zone) spawnPoint() [3]float64 {
-	p := z.cfg.Spawn
-	a := rand.Float64() * 2 * math.Pi
-	r := z.cfg.SpawnRadius * math.Sqrt(rand.Float64())
-	p[0] += r * math.Cos(a)
-	p[2] += r * math.Sin(a)
-	return p
-}
-
 func vec(v [3]float64) *pb.Vec3 {
 	return &pb.Vec3{X: float32(v[0]), Y: float32(v[1]), Z: float32(v[2])}
 }
 
 func clamp(v, lo, hi float64) float64 { return max(lo, min(hi, v)) }
+
+func hdist(a, b [3]float64) float64 { return math.Hypot(a[0]-b[0], a[2]-b[2]) }
+
+func yawToward(from, to [3]float64) float64 { return math.Atan2(to[0]-from[0], to[2]-from[2]) }
+
+func describe(e *entity) string { return fmt.Sprintf("%s#%d", e.name, e.id) }

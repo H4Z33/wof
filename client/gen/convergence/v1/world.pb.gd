@@ -191,7 +191,19 @@ class _Reader:
 
 enum ProtocolVersion {
 	PROTOCOL_VERSION_UNSPECIFIED = 0,
-	PROTOCOL_VERSION_CURRENT = 1,
+	PROTOCOL_VERSION_CURRENT = 2,
+}
+
+enum EntityKind {
+	ENTITY_KIND_UNSPECIFIED = 0,
+	ENTITY_KIND_PLAYER = 1,
+	ENTITY_KIND_NPC = 2,
+}
+
+enum CombatEventKind {
+	COMBAT_EVENT_KIND_UNSPECIFIED = 0,
+	COMBAT_EVENT_KIND_DAMAGE = 1,
+	COMBAT_EVENT_KIND_DEATH = 2,
 }
 
 class Vec3:
@@ -245,11 +257,13 @@ class ClientMessage:
 	var hello: Hello = null
 	var move: MoveInput = null
 	var ping: Ping = null
+	var use_skill: UseSkill = null
 
 	func which_payload() -> String:
 		if hello != null: return "hello"
 		if move != null: return "move"
 		if ping != null: return "ping"
+		if use_skill != null: return "use_skill"
 		return ""
 
 	func _write(w: _Writer) -> void:
@@ -259,6 +273,8 @@ class ClientMessage:
 			w.message(11, move)
 		if ping != null:
 			w.message(12, ping)
+		if use_skill != null:
+			w.message(13, use_skill)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -275,6 +291,7 @@ class ClientMessage:
 						if sub.failed: r.failed = true
 						move = null
 						ping = null
+						use_skill = null
 						hello = v
 				11:
 					if wt != 2:
@@ -286,6 +303,7 @@ class ClientMessage:
 						if sub.failed: r.failed = true
 						hello = null
 						ping = null
+						use_skill = null
 						move = v
 				12:
 					if wt != 2:
@@ -297,7 +315,20 @@ class ClientMessage:
 						if sub.failed: r.failed = true
 						hello = null
 						move = null
+						use_skill = null
 						ping = v
+				13:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := UseSkill.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						hello = null
+						move = null
+						ping = null
+						use_skill = v
 				_:
 					r.skip(wt)
 
@@ -437,18 +468,59 @@ class Ping:
 		m._read(r)
 		return null if r.failed else m
 
+class UseSkill:
+	extends RefCounted
+	var skill_id: int = 0
+	var target_id: int = 0
+
+	func _write(w: _Writer) -> void:
+		if skill_id != 0:
+			w.tag(1, 0)
+			w.varint(skill_id)
+		if target_id != 0:
+			w.tag(2, 0)
+			w.varint(target_id)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 0: skill_id = r.uint32()
+					else: r.skip(wt)
+				2:
+					if wt == 0: target_id = r.uint32()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> UseSkill:
+		var m := UseSkill.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
 class ServerMessage:
 	extends RefCounted
 	var welcome: Welcome = null
 	var snapshot: Snapshot = null
 	var pong: Pong = null
 	var error: ServerError = null
+	var skill_rejected: SkillRejected = null
 
 	func which_payload() -> String:
 		if welcome != null: return "welcome"
 		if snapshot != null: return "snapshot"
 		if pong != null: return "pong"
 		if error != null: return "error"
+		if skill_rejected != null: return "skill_rejected"
 		return ""
 
 	func _write(w: _Writer) -> void:
@@ -460,6 +532,8 @@ class ServerMessage:
 			w.message(12, pong)
 		if error != null:
 			w.message(13, error)
+		if skill_rejected != null:
+			w.message(14, skill_rejected)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -477,6 +551,7 @@ class ServerMessage:
 						snapshot = null
 						pong = null
 						error = null
+						skill_rejected = null
 						welcome = v
 				11:
 					if wt != 2:
@@ -489,6 +564,7 @@ class ServerMessage:
 						welcome = null
 						pong = null
 						error = null
+						skill_rejected = null
 						snapshot = v
 				12:
 					if wt != 2:
@@ -501,6 +577,7 @@ class ServerMessage:
 						welcome = null
 						snapshot = null
 						error = null
+						skill_rejected = null
 						pong = v
 				13:
 					if wt != 2:
@@ -513,7 +590,21 @@ class ServerMessage:
 						welcome = null
 						snapshot = null
 						pong = null
+						skill_rejected = null
 						error = v
+				14:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := SkillRejected.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						welcome = null
+						snapshot = null
+						pong = null
+						error = null
+						skill_rejected = v
 				_:
 					r.skip(wt)
 
@@ -538,6 +629,9 @@ class Welcome:
 	var move_speed: float = 0.0
 	var spawn: Vec3 = null
 	var half_extent: float = 0.0
+	var skills: Array[SkillInfo] = []
+	var status: PlayerStatus = null
+	var character_name: String = ""
 
 	func _write(w: _Writer) -> void:
 		if entity_id != 0:
@@ -560,6 +654,13 @@ class Welcome:
 		if half_extent != 0.0:
 			w.tag(7, 5)
 			w.f32(half_extent)
+		for v in skills:
+			w.message(8, v)
+		if status != null:
+			w.message(9, status)
+		if not character_name.is_empty():
+			w.tag(10, 2)
+			w.string(character_name)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -593,6 +694,27 @@ class Welcome:
 				7:
 					if wt == 5: half_extent = r.f32()
 					else: r.skip(wt)
+				8:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := SkillInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						skills.append(v)
+				9:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := PlayerStatus.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						status = v
+				10:
+					if wt == 2: character_name = r.string()
+					else: r.skip(wt)
 				_:
 					r.skip(wt)
 
@@ -608,12 +730,148 @@ class Welcome:
 		m._read(r)
 		return null if r.failed else m
 
+class SkillInfo:
+	extends RefCounted
+	var id: int = 0
+	var name: String = ""
+	var range: float = 0.0
+	var cooldown_ms: int = 0
+	var anim: String = ""
+	var projectile: bool = false
+
+	func _write(w: _Writer) -> void:
+		if id != 0:
+			w.tag(1, 0)
+			w.varint(id)
+		if not name.is_empty():
+			w.tag(2, 2)
+			w.string(name)
+		if range != 0.0:
+			w.tag(3, 5)
+			w.f32(range)
+		if cooldown_ms != 0:
+			w.tag(4, 0)
+			w.varint(cooldown_ms)
+		if not anim.is_empty():
+			w.tag(5, 2)
+			w.string(anim)
+		if projectile != false:
+			w.tag(6, 0)
+			w.boolean(projectile)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 0: id = r.uint32()
+					else: r.skip(wt)
+				2:
+					if wt == 2: name = r.string()
+					else: r.skip(wt)
+				3:
+					if wt == 5: range = r.f32()
+					else: r.skip(wt)
+				4:
+					if wt == 0: cooldown_ms = r.uint32()
+					else: r.skip(wt)
+				5:
+					if wt == 2: anim = r.string()
+					else: r.skip(wt)
+				6:
+					if wt == 0: projectile = r.boolean()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> SkillInfo:
+		var m := SkillInfo.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class PlayerStatus:
+	extends RefCounted
+	var level: int = 0
+	var exp: int = 0
+	var exp_to_next: int = 0
+	var hp: int = 0
+	var max_hp: int = 0
+	var respawn_in_ms: int = 0
+
+	func _write(w: _Writer) -> void:
+		if level != 0:
+			w.tag(1, 0)
+			w.varint(level)
+		if exp != 0:
+			w.tag(2, 0)
+			w.varint(exp)
+		if exp_to_next != 0:
+			w.tag(3, 0)
+			w.varint(exp_to_next)
+		if hp != 0:
+			w.tag(4, 0)
+			w.varint(hp)
+		if max_hp != 0:
+			w.tag(5, 0)
+			w.varint(max_hp)
+		if respawn_in_ms != 0:
+			w.tag(6, 0)
+			w.varint(respawn_in_ms)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 0: level = r.uint32()
+					else: r.skip(wt)
+				2:
+					if wt == 0: exp = r.varint()
+					else: r.skip(wt)
+				3:
+					if wt == 0: exp_to_next = r.varint()
+					else: r.skip(wt)
+				4:
+					if wt == 0: hp = r.uint32()
+					else: r.skip(wt)
+				5:
+					if wt == 0: max_hp = r.uint32()
+					else: r.skip(wt)
+				6:
+					if wt == 0: respawn_in_ms = r.uint32()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> PlayerStatus:
+		var m := PlayerStatus.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
 class EntityState:
 	extends RefCounted
 	var id: int = 0
 	var pos: Vec3 = null
 	var yaw: float = 0.0
 	var moving: bool = false
+	var hp: int = 0
+	var max_hp: int = 0
 
 	func _write(w: _Writer) -> void:
 		if id != 0:
@@ -627,6 +885,12 @@ class EntityState:
 		if moving != false:
 			w.tag(4, 0)
 			w.boolean(moving)
+		if hp != 0:
+			w.tag(5, 0)
+			w.varint(hp)
+		if max_hp != 0:
+			w.tag(6, 0)
+			w.varint(max_hp)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -651,6 +915,12 @@ class EntityState:
 				4:
 					if wt == 0: moving = r.boolean()
 					else: r.skip(wt)
+				5:
+					if wt == 0: hp = r.uint32()
+					else: r.skip(wt)
+				6:
+					if wt == 0: max_hp = r.uint32()
+					else: r.skip(wt)
 				_:
 					r.skip(wt)
 
@@ -672,6 +942,8 @@ class EntitySpawn:
 	var name: String = ""
 	var model: String = ""
 	var state: EntityState = null
+	var kind: int = 0
+	var level: int = 0
 
 	func _write(w: _Writer) -> void:
 		if id != 0:
@@ -685,6 +957,12 @@ class EntitySpawn:
 			w.string(model)
 		if state != null:
 			w.message(4, state)
+		if kind != 0:
+			w.tag(5, 0)
+			w.varint(kind)
+		if level != 0:
+			w.tag(6, 0)
+			w.varint(level)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -709,6 +987,12 @@ class EntitySpawn:
 						v._read(sub)
 						if sub.failed: r.failed = true
 						state = v
+				5:
+					if wt == 0: kind = r.varint()
+					else: r.skip(wt)
+				6:
+					if wt == 0: level = r.uint32()
+					else: r.skip(wt)
 				_:
 					r.skip(wt)
 
@@ -724,6 +1008,66 @@ class EntitySpawn:
 		m._read(r)
 		return null if r.failed else m
 
+class CombatEvent:
+	extends RefCounted
+	var kind: int = 0
+	var source_id: int = 0
+	var target_id: int = 0
+	var skill_id: int = 0
+	var amount: int = 0
+
+	func _write(w: _Writer) -> void:
+		if kind != 0:
+			w.tag(1, 0)
+			w.varint(kind)
+		if source_id != 0:
+			w.tag(2, 0)
+			w.varint(source_id)
+		if target_id != 0:
+			w.tag(3, 0)
+			w.varint(target_id)
+		if skill_id != 0:
+			w.tag(4, 0)
+			w.varint(skill_id)
+		if amount != 0:
+			w.tag(5, 0)
+			w.varint(amount)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 0: kind = r.varint()
+					else: r.skip(wt)
+				2:
+					if wt == 0: source_id = r.uint32()
+					else: r.skip(wt)
+				3:
+					if wt == 0: target_id = r.uint32()
+					else: r.skip(wt)
+				4:
+					if wt == 0: skill_id = r.uint32()
+					else: r.skip(wt)
+				5:
+					if wt == 0: amount = r.uint32()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> CombatEvent:
+		var m := CombatEvent.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
 class Snapshot:
 	extends RefCounted
 	var tick: int = 0
@@ -731,6 +1075,8 @@ class Snapshot:
 	var entities: Array[EntityState] = []
 	var spawns: Array[EntitySpawn] = []
 	var despawns: Array[int] = []
+	var events: Array[CombatEvent] = []
+	var status: PlayerStatus = null
 
 	func _write(w: _Writer) -> void:
 		if tick != 0:
@@ -750,6 +1096,10 @@ class Snapshot:
 			w.tag(5, 2)
 			w.varint(pw.buf.size())
 			w.buf.append_array(pw.buf)
+		for v in events:
+			w.message(6, v)
+		if status != null:
+			w.message(7, status)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -787,6 +1137,24 @@ class Snapshot:
 						if sub.failed: r.failed = true
 					elif wt == 0: despawns.append(r.uint32())
 					else: r.skip(wt)
+				6:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := CombatEvent.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						events.append(v)
+				7:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := PlayerStatus.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						status = v
 				_:
 					r.skip(wt)
 
@@ -798,6 +1166,45 @@ class Snapshot:
 	# Returns null if the bytes are malformed.
 	static func from_bytes(b: PackedByteArray) -> Snapshot:
 		var m := Snapshot.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class SkillRejected:
+	extends RefCounted
+	var skill_id: int = 0
+	var reason: String = ""
+
+	func _write(w: _Writer) -> void:
+		if skill_id != 0:
+			w.tag(1, 0)
+			w.varint(skill_id)
+		if not reason.is_empty():
+			w.tag(2, 2)
+			w.string(reason)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 0: skill_id = r.uint32()
+					else: r.skip(wt)
+				2:
+					if wt == 2: reason = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> SkillRejected:
+		var m := SkillRejected.new()
 		var r := _Reader.new(b, 0, b.size())
 		m._read(r)
 		return null if r.failed else m

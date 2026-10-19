@@ -7,7 +7,21 @@ option go_package = "convergence/server/gen/convergence/v1;convergencev1";
 // Bump when a change breaks older clients. The server rejects mismatches in Hello.
 enum ProtocolVersion {
   PROTOCOL_VERSION_UNSPECIFIED = 0;
-  PROTOCOL_VERSION_CURRENT = 1;
+  PROTOCOL_VERSION_CURRENT = 2;
+}
+
+enum EntityKind {
+  ENTITY_KIND_UNSPECIFIED = 0;
+  ENTITY_KIND_PLAYER = 1;
+  ENTITY_KIND_NPC = 2;
+}
+
+enum CombatEventKind {
+  COMBAT_EVENT_KIND_UNSPECIFIED = 0;
+  // amount = damage dealt.
+  COMBAT_EVENT_KIND_DAMAGE = 1;
+  // The target died from this hit.
+  COMBAT_EVENT_KIND_DEATH = 2;
 }
 
 message Vec3 {
@@ -26,10 +40,11 @@ message ClientMessage {
     Hello hello = 10;
     MoveInput move = 11;
     Ping ping = 12;
+    UseSkill use_skill = 13;
   }
 }
 
-// First message on a new connection. The token comes from the HTTP login.
+// First message on a new connection. The ticket comes from POST /api/v1/play.
 message Hello {
   string token = 1;
   uint32 protocol_version = 2;
@@ -52,6 +67,13 @@ message Ping {
   uint64 client_time_ms = 1;
 }
 
+// Request to use a skill on a target. The server checks cooldown, range and
+// that both sides are alive; failures come back as SkillRejected.
+message UseSkill {
+  uint32 skill_id = 1;
+  uint32 target_id = 2;
+}
+
 // ---------------------------------------------------------------------------
 // Server -> Client. Every WebSocket binary frame from the server is one
 // ServerMessage.
@@ -63,6 +85,7 @@ message ServerMessage {
     Snapshot snapshot = 11;
     Pong pong = 12;
     ServerError error = 13;
+    SkillRejected skill_rejected = 14;
   }
 }
 
@@ -76,6 +99,31 @@ message Welcome {
   Vec3 spawn = 6;
   // Walkable square is [-half_extent, half_extent] on X and Z.
   float half_extent = 7;
+  repeated SkillInfo skills = 8;
+  PlayerStatus status = 9;
+  string character_name = 10;
+}
+
+// What the client needs to show a skill and predict its cooldown.
+message SkillInfo {
+  uint32 id = 1;
+  string name = 2;
+  float range = 3;
+  uint32 cooldown_ms = 4;
+  // Animation the caster plays (UAL clip name).
+  string anim = 5;
+  // Draw a projectile from caster to target.
+  bool projectile = 6;
+}
+
+message PlayerStatus {
+  uint32 level = 1;
+  uint64 exp = 2;
+  uint64 exp_to_next = 3;
+  uint32 hp = 4;
+  uint32 max_hp = 5;
+  // While dead: time until respawn.
+  uint32 respawn_in_ms = 6;
 }
 
 message EntityState {
@@ -83,6 +131,8 @@ message EntityState {
   Vec3 pos = 2;
   float yaw = 3;
   bool moving = 4;
+  uint32 hp = 5;
+  uint32 max_hp = 6;
 }
 
 message EntitySpawn {
@@ -91,10 +141,20 @@ message EntitySpawn {
   // Character model key, resolved by the client (e.g. "mannequin_f").
   string model = 3;
   EntityState state = 4;
+  EntityKind kind = 5;
+  uint32 level = 6;
+}
+
+message CombatEvent {
+  CombatEventKind kind = 1;
+  uint32 source_id = 2;
+  uint32 target_id = 3;
+  uint32 skill_id = 4;
+  uint32 amount = 5;
 }
 
 // Sent every tick. Spawns and despawns are relative to what this client
-// already knows, so each client gets its own Snapshot.
+// already knows (its interest area), so each client gets its own Snapshot.
 message Snapshot {
   uint32 tick = 1;
   // Last MoveInput.seq the server applied for this client's own entity.
@@ -102,6 +162,15 @@ message Snapshot {
   repeated EntityState entities = 3;
   repeated EntitySpawn spawns = 4;
   repeated uint32 despawns = 5;
+  // Combat this tick involving entities this client can see.
+  repeated CombatEvent events = 6;
+  PlayerStatus status = 7;
+}
+
+message SkillRejected {
+  uint32 skill_id = 1;
+  // Machine-readable: cooldown, out_of_range, invalid_target, dead, unknown_skill.
+  string reason = 2;
 }
 
 message Pong {

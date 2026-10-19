@@ -17,6 +17,7 @@ import (
 
 	pb "convergence/server/gen/convergence/v1"
 	"convergence/server/internal/auth"
+	"convergence/server/internal/model"
 	"convergence/server/internal/zone"
 )
 
@@ -31,12 +32,12 @@ const (
 )
 
 type Gateway struct {
-	tickets *auth.Store
+	tickets *auth.Store[model.Character]
 	zone    *zone.Zone
 	log     *slog.Logger
 }
 
-func New(tickets *auth.Store, z *zone.Zone, log *slog.Logger) *Gateway {
+func New(tickets *auth.Store[model.Character], z *zone.Zone, log *slog.Logger) *Gateway {
 	return &Gateway{tickets: tickets, zone: z, log: log.With("component", "gateway")}
 }
 
@@ -85,6 +86,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch p := msg.Payload.(type) {
 		case *pb.ClientMessage_Move:
 			h.Input(p.Move)
+		case *pb.ClientMessage_UseSkill:
+			h.UseSkill(p.UseSkill)
 		case *pb.ClientMessage_Ping:
 			c.sendMsg(&pb.ServerMessage{Payload: &pb.ServerMessage_Pong{Pong: &pb.Pong{
 				ClientTimeMs: p.Ping.ClientTimeMs,
@@ -111,12 +114,12 @@ func (g *Gateway) handshake(ctx context.Context, c *conn) (*zone.Handle, error) 
 		c.sendError("protocol_mismatch", "client is out of date")
 		return nil, errors.New("protocol mismatch")
 	}
-	id, ok := g.tickets.Redeem(hello.Token)
+	char, ok := g.tickets.Redeem(hello.Token)
 	if !ok {
-		c.sendError("bad_token", "login ticket invalid or expired")
+		c.sendError("bad_token", "play ticket invalid or expired")
 		return nil, errors.New("bad token")
 	}
-	h, err := g.zone.Join(ctx, id, c)
+	h, err := g.zone.Join(ctx, char, c)
 	if err != nil {
 		c.sendError("join_failed", err.Error())
 		return nil, err

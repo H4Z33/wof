@@ -20,6 +20,12 @@ const MODELS := {
 		# The source sculpt has no texture.
 		"albedo": Color(0.36, 0.40, 0.46),
 	},
+	"bandit": {
+		"label": "Bandit",
+		"scene": "res://assets/characters/mannequin_m/UAL1_Standard.glb",
+		"albedo": Color(0.45, 0.16, 0.12),
+		"npc_only": true,
+	},
 }
 
 const DEFAULT_MODEL := "mannequin_m"
@@ -29,8 +35,9 @@ static var _source_skeleton_path := ""
 static var _libs := {}  # model key -> AnimationLibrary retargeted for that model
 
 
+## Models a player can pick for a new character.
 static func keys() -> Array:
-	return MODELS.keys()
+	return MODELS.keys().filter(func(k): return not MODELS[k].get("npc_only", false))
 
 
 static func label(key: String) -> String:

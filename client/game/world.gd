@@ -1,19 +1,34 @@
-## The in-zone scene: environment, camera, local prediction and replicated
-## entities.
+## The in-zone scene: environment, camera, local prediction, replicated
+## entities and tab-target combat.
 ##
 ## Local player: every server tick (50 ms) the current input is sent as a
 ## MoveInput and applied locally right away (prediction). Each Snapshot carries
 ## the server position and the last input it applied; we reset to that
 ## position and replay the inputs it has not applied yet (reconciliation).
+##
+## Combat: the player selects a target (click or Tab) and uses skills (1, 2).
+## Cooldowns and range are checked locally for responsiveness, but the server
+## decides; rejections come back through Net.skill_rejected.
 extends Node3D
 
 const PB := preload("res://gen/convergence/v1/world.pb.gd")
 const Character := preload("res://game/character.gd")
+const Hud := preload("res://game/hud.gd")
 const INTERP_TICKS := 2.0  # remote entities render this far in the past
 const SNAP_DISTANCE := 3.0  # corrections larger than this teleport instead of blending
+const TAB_RANGE := 30.0
+const NPC_ATTACK_ANIM := "Punch_Jab"
+const REJECT_TEXT := {
+	"cooldown": "Not ready yet",
+	"out_of_range": "Out of range",
+	"invalid_target": "Invalid target",
+	"dead": "You are dead",
+	"unknown_skill": "Unknown skill",
+}
 
-## Test option: walk in a circle without keyboard input.
+## Test options.
 var autowalk := false
+var autofight := false
 
 var my_id := 0
 var zone_id := ""
@@ -34,11 +49,19 @@ var _prev_pred_pos := Vector3.ZERO
 var _pred_yaw := 0.0
 var _pred_moving := false
 
+var _skills := {}  # id -> PB.SkillInfo
+var _skill_order: Array[int] = []
+var _ready_at := {}  # skill id -> Time.get_ticks_msec() when usable again
+var _status: PB.PlayerStatus
+var _target_id := 0
+var _ring: MeshInstance3D
+
 var _camera: Camera3D
 var _cam_yaw := 0.0
 var _cam_pitch := 0.45
 var _cam_distance := 7.0
-var _hud: Label
+var _click_start := Vector2.ZERO
+var _hud: Hud
 
 
 func start(welcome: PB.Welcome) -> void:
@@ -50,10 +73,20 @@ func start(welcome: PB.Welcome) -> void:
 	_pred_pos = _vec(welcome.spawn)
 	_prev_pred_pos = _pred_pos
 	_client_tick = welcome.server_tick
+	for s in welcome.skills:
+		_skills[s.id] = s
+		_skill_order.append(s.id)
 	_build_environment()
 	_build_camera()
-	_build_hud()
+	_hud = Hud.new()
+	add_child(_hud)
+	_hud.set_skills(welcome.skills)
+	_hud.skill_pressed.connect(use_skill)
+	_build_ring()
+	if welcome.status != null:
+		_on_status(welcome.status)
 	Net.snapshot_received.connect(_on_snapshot)
+	Net.skill_rejected.connect(_on_skill_rejected)
 
 
 func _process(delta: float) -> void:
@@ -79,13 +112,27 @@ func _process(delta: float) -> void:
 		if id != my_id:
 			_entities[id].interpolate(render_tick)
 
+	if autofight:
+		_autofight()
+	_update_target_visuals()
 	_update_camera(local.position if local != null else _pred_pos)
 	_update_hud()
+
+
+func _is_dead() -> bool:
+	return _status != null and _status.hp == 0
 
 
 # --- Input and prediction ----------------------------------------------------
 
 func _read_input() -> Vector2:
+	if _is_dead():
+		return Vector2.ZERO
+	if autofight:
+		var target: Character = _entities.get(_target_id)
+		if target != null and target.is_alive():
+			var to := Vector2(target.global_position.x - _pred_pos.x, target.global_position.z - _pred_pos.z)
+			return to.normalized() if to.length() > 1.8 else Vector2.ZERO
 	if autowalk:
 		var t := Time.get_ticks_msec() / 1000.0 * 0.6
 		return Vector2(cos(t), sin(t))
@@ -148,6 +195,110 @@ func _reconcile(server_pos: Vector3, ack: int) -> void:
 	_pred_pos = corrected
 
 
+# --- Targeting and skills ----------------------------------------------------
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_RIGHT):
+		_cam_yaw -= event.relative.x * 0.006
+		_cam_pitch = clampf(_cam_pitch + event.relative.y * 0.004, 0.05, 1.3)
+	elif event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
+			_cam_distance = maxf(_cam_distance - 0.6, 2.5)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
+			_cam_distance = minf(_cam_distance + 0.6, 25.0)
+		elif event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				_click_start = event.position
+			elif event.position.distance_to(_click_start) < 6.0:
+				_pick_at(event.position)
+	elif event is InputEventKey and event.pressed and not event.echo:
+		match event.physical_keycode:
+			KEY_TAB:
+				_cycle_target()
+				get_viewport().set_input_as_handled()
+			KEY_1, KEY_2, KEY_3, KEY_4:
+				var i: int = event.physical_keycode - KEY_1
+				if i < _skill_order.size():
+					use_skill(_skill_order[i])
+
+
+func _pick_at(screen_pos: Vector2) -> void:
+	var from := _camera.project_ray_origin(screen_pos)
+	var query := PhysicsRayQueryParameters3D.create(from, from + _camera.project_ray_normal(screen_pos) * 200.0)
+	query.collision_mask = Character.PICK_LAYER
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		_set_target(0)
+	elif hit["collider"].has_meta("entity_id"):
+		var id: int = hit["collider"].get_meta("entity_id")
+		_set_target(0 if id == my_id else id)
+
+
+## Tab: the nearest living NPC, or the next one by distance if already targeting.
+func _cycle_target() -> void:
+	var candidates: Array = []
+	for id in _entities:
+		var c: Character = _entities[id]
+		if c.is_npc() and c.is_alive():
+			var d := c.global_position.distance_to(_pred_pos)
+			if d <= TAB_RANGE:
+				candidates.append([d, id])
+	if candidates.is_empty():
+		_hud.show_message("No enemies nearby", Color(0.8, 0.8, 0.8))
+		return
+	candidates.sort_custom(func(a, b): return a[0] < b[0])
+	var next: int = candidates[0][1]
+	for i in candidates.size():
+		if candidates[i][1] == _target_id:
+			next = candidates[(i + 1) % candidates.size()][1]
+			break
+	_set_target(next)
+
+
+func _set_target(id: int) -> void:
+	_target_id = id if _entities.has(id) else 0
+	_hud.set_target(_entities.get(_target_id))
+
+
+func use_skill(skill_id: int) -> void:
+	var s: PB.SkillInfo = _skills.get(skill_id)
+	if s == null or _is_dead():
+		return
+	var target: Character = _entities.get(_target_id)
+	if target == null or not target.is_npc():
+		_hud.show_message("Select an enemy first (click or Tab)", Color(1, 0.85, 0.5))
+		return
+	if not target.is_alive():
+		_hud.show_message("Target is dead", Color(0.8, 0.8, 0.8))
+		return
+	if Time.get_ticks_msec() < _ready_at.get(skill_id, 0):
+		_hud.show_message("Not ready yet", Color(0.8, 0.8, 0.8))
+		return
+	if target.global_position.distance_to(_pred_pos) > s.range + 0.5:
+		_hud.show_message("Out of range", Color(1, 0.85, 0.5))
+		return
+	_ready_at[skill_id] = Time.get_ticks_msec() + s.cooldown_ms
+	Net.send_skill(skill_id, _target_id)
+
+
+func _on_skill_rejected(skill_id: int, reason: String) -> void:
+	_ready_at.erase(skill_id)  # let the player retry right away
+	_hud.show_message(REJECT_TEXT.get(reason, reason), Color(1, 0.6, 0.5))
+
+
+## Test option: target the nearest enemy, walk to it and use skills.
+func _autofight() -> void:
+	var target: Character = _entities.get(_target_id)
+	if target == null or not target.is_alive():
+		_cycle_target()
+		return
+	var now := Time.get_ticks_msec()
+	for id in _skill_order:
+		var s: PB.SkillInfo = _skills[id]
+		if now >= _ready_at.get(id, 0) and target.global_position.distance_to(_pred_pos) <= s.range:
+			use_skill(id)
+
+
 # --- Replication -------------------------------------------------------------
 
 func _on_snapshot(snap: PB.Snapshot) -> void:
@@ -162,45 +313,110 @@ func _on_snapshot(snap: PB.Snapshot) -> void:
 		if _entities.has(id):
 			_entities[id].queue_free()
 			_entities.erase(id)
+			if id == _target_id:
+				_set_target(0)
 
 	for spawn in snap.spawns:
 		if _entities.has(spawn.id):
 			continue
 		var c := Character.new()
 		add_child(c)
-		c.setup(spawn.id, spawn.name, spawn.model, spawn.id == my_id)
+		c.setup(spawn, spawn.id == my_id)
 		_entities[spawn.id] = c
 		_apply_state(snap, spawn.state)
 
 	for state in snap.entities:
 		_apply_state(snap, state)
 
+	for ev in snap.events:
+		_on_combat_event(ev)
+
+	if snap.status != null:
+		_on_status(snap.status)
+
 
 func _apply_state(snap: PB.Snapshot, state: PB.EntityState) -> void:
 	if state == null or not _entities.has(state.id):
 		return
+	var c: Character = _entities[state.id]
+	c.set_health(state.hp, state.max_hp)
 	if state.id == my_id:
 		_reconcile(_vec(state.pos), snap.ack_input_seq)
 	else:
-		_entities[state.id].push_state(snap.tick, _vec(state.pos), state.yaw, state.moving)
+		c.push_state(snap.tick, _vec(state.pos), state.yaw, state.moving)
+
+
+func _on_combat_event(ev: PB.CombatEvent) -> void:
+	var src: Character = _entities.get(ev.source_id)
+	var dst: Character = _entities.get(ev.target_id)
+	match ev.kind:
+		PB.CombatEventKind.COMBAT_EVENT_KIND_DAMAGE:
+			var skill: PB.SkillInfo = _skills.get(ev.skill_id)
+			if src != null:
+				src.play_action(skill.anim if skill != null else NPC_ATTACK_ANIM)
+			if dst == null:
+				return
+			var color := Color(1.0, 0.95, 0.85)
+			if ev.target_id == my_id:
+				color = Color(1.0, 0.35, 0.3)
+			elif ev.source_id != my_id:
+				color = Color(0.75, 0.75, 0.75)
+			var amount := str(ev.amount)
+			if skill != null and skill.projectile and src != null:
+				_fire_projectile(src, dst, func(): _land_hit(dst, amount, color))
+			else:
+				_land_hit(dst, amount, color)
+		PB.CombatEventKind.COMBAT_EVENT_KIND_DEATH:
+			if dst != null and ev.source_id == my_id and dst.is_npc():
+				_hud.show_message("%s defeated" % dst.display_name, Color(0.9, 0.85, 0.5))
+
+
+func _land_hit(dst: Character, amount: String, color: Color) -> void:
+	if not is_instance_valid(dst):
+		return
+	dst.show_number(amount, color)
+	if dst.is_alive():
+		dst.play_hit()
+
+
+func _fire_projectile(src: Character, dst: Character, on_hit: Callable) -> void:
+	var orb := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.14
+	sphere.height = 0.28
+	orb.mesh = sphere
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.5, 0.95, 1.0)
+	mat.emission_enabled = true
+	mat.emission = Color(0.4, 0.9, 1.0)
+	orb.material_override = mat
+	add_child(orb)
+	orb.global_position = src.chest()
+	var end := dst.chest()
+	var tw := orb.create_tween()
+	tw.tween_property(orb, "global_position", end, clampf(src.chest().distance_to(end) / 30.0, 0.1, 0.6))
+	tw.tween_callback(on_hit)
+	tw.tween_callback(orb.queue_free)
+
+
+func _on_status(s: PB.PlayerStatus) -> void:
+	if _status != null:
+		if s.level > _status.level:
+			_hud.show_message("Level up! You are now level %d" % s.level, Color(1.0, 0.85, 0.3))
+		elif s.exp > _status.exp and s.level == _status.level:
+			_hud.show_message("+%d exp" % (s.exp - _status.exp), Color(0.9, 0.85, 0.5))
+		if _status.hp > 0 and s.hp == 0:
+			_set_target(0)
+	_status = s
+	_hud.set_status(s)
 
 
 static func _vec(v: PB.Vec3) -> Vector3:
 	return Vector3.ZERO if v == null else Vector3(v.x, v.y, v.z)
 
 
-# --- Camera ------------------------------------------------------------------
-
-func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_RIGHT):
-		_cam_yaw -= event.relative.x * 0.006
-		_cam_pitch = clampf(_cam_pitch + event.relative.y * 0.004, 0.05, 1.3)
-	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_cam_distance = maxf(_cam_distance - 0.6, 2.5)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_cam_distance = minf(_cam_distance + 0.6, 25.0)
-
+# --- Camera, target ring, HUD ------------------------------------------------
 
 func set_camera_yaw(yaw: float) -> void:
 	_cam_yaw = yaw
@@ -211,6 +427,39 @@ func _update_camera(target: Vector3) -> void:
 	var focus := target + Vector3(0, 1.4, 0)
 	_camera.position = focus + offset * _cam_distance
 	_camera.look_at(focus)
+
+
+func _update_target_visuals() -> void:
+	var target: Character = _entities.get(_target_id)
+	_ring.visible = target != null
+	if target != null:
+		_ring.global_position = target.global_position + Vector3(0, 0.04, 0)
+		_hud.set_target(target)
+	var now := Time.get_ticks_msec()
+	var remaining := {}
+	for id in _ready_at:
+		remaining[id] = maxf(0.0, (_ready_at[id] - now) / 1000.0)
+	_hud.update_cooldowns(remaining)
+
+
+func _update_hud() -> void:
+	_hud.debug_label.text = "%s  ·  entity %d  ·  visible %d  ·  rtt %d ms\nWASD move · click/Tab target · 1-2 skills · right-drag camera · Esc logout" % [
+		zone_id, my_id, _entities.size(), Net.rtt_ms]
+
+
+func _build_ring() -> void:
+	_ring = MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.55
+	torus.outer_radius = 0.68
+	_ring.mesh = torus
+	_ring.scale = Vector3(1, 0.05, 1)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1.0, 0.35, 0.25)
+	_ring.material_override = mat
+	_ring.visible = false
+	add_child(_ring)
 
 
 # --- Scene construction ------------------------------------------------------
@@ -290,18 +539,3 @@ void fragment() {
 		pillar.material_override = stone
 		pillar.position = p + Vector3(0, 2, 0)
 		add_child(pillar)
-
-
-func _build_hud() -> void:
-	var layer := CanvasLayer.new()
-	add_child(layer)
-	_hud = Label.new()
-	_hud.position = Vector2(12, 10)
-	_hud.add_theme_color_override("font_outline_color", Color.BLACK)
-	_hud.add_theme_constant_override("outline_size", 6)
-	layer.add_child(_hud)
-
-
-func _update_hud() -> void:
-	_hud.text = "%s  ·  entity %d  ·  players %d  ·  rtt %d ms  ·  pending %d\npos (%.1f, %.1f)\nWASD move · right-drag camera · wheel zoom · Esc disconnect" % [
-		zone_id, my_id, _entities.size(), Net.rtt_ms, _pending.size(), _pred_pos.x, _pred_pos.z]

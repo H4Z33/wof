@@ -9,3 +9,6 @@ client/export/
 
 # Python
 __pycache__/
+
+# Local secrets
+.env

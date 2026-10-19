@@ -1,0 +1,13 @@
+id: jade_terraces
+half_extent: 60
+spawn: [0, 0]
+spawn_radius: 3
+npc_groups:
+  - npc: mountain_bandit
+    count: 6
+    center: [22, -22]
+    radius: 8
+  - npc: mountain_bandit
+    count: 4
+    center: [-26, 16]
+    radius: 6

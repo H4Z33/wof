@@ -1,52 +1,66 @@
 ## Connection to the game server (autoload "Net").
 ##
-## Flow: login() does the HTTP dev login, opens the WebSocket and sends Hello.
+## Flow: login() or register() over HTTP, then create_character() if needed,
+## then play() which gets a ticket, opens the WebSocket and sends Hello.
 ## Server messages arrive as signals.
 extends Node
 
 signal welcomed(welcome: PB.Welcome)
 signal snapshot_received(snapshot: PB.Snapshot)
+signal skill_rejected(skill_id: int, reason: String)
 signal disconnected(reason: String)
 
 const PB := preload("res://gen/convergence/v1/world.pb.gd")
 const PING_INTERVAL := 2.0
 
 var rtt_ms := 0.0
+var server_url := ""
+var characters: Array = []  # [{id, name, model, level, zone_id}]
 
+var _session := ""
 var _ws: WebSocketPeer
-var _token := ""
+var _ticket := ""
 var _hello_sent := false
 var _was_open := false
 var _ping_timer := 0.0
 var _last_error := ""
 
 
-## Logs in and connects. Returns "" on success or an error message.
-func login(server: String, player_name: String, model: String) -> String:
-	close()
-	var http := HTTPRequest.new()
-	add_child(http)
-	var body := JSON.stringify({"name": player_name, "model": model})
-	var err := http.request(server + "/api/v1/dev-login",
-			PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, body)
-	if err != OK:
-		http.queue_free()
-		return "Login request failed (%s)" % error_string(err)
-	var res: Array = await http.request_completed
-	http.queue_free()
-	if res[0] != HTTPRequest.RESULT_SUCCESS:
-		return "Cannot reach the server at %s" % server
-	var text := (res[3] as PackedByteArray).get_string_from_utf8().strip_edges()
-	if res[1] != 200:
-		return "Login refused: %s" % text
-	var data = JSON.parse_string(text)
-	if typeof(data) != TYPE_DICTIONARY or not data.has("token"):
-		return "Unexpected login response"
+## Each returns "" on success or a message to show the player.
+func register(server: String, username: String, password: String) -> String:
+	var res := await _request(server, HTTPClient.METHOD_POST, "/api/v1/register",
+			{"username": username, "password": password})
+	return res["error"]
 
-	_token = data["token"]
-	var ws_url := server.replace("https://", "wss://").replace("http://", "ws://") + str(data["ws_path"])
+
+func login(server: String, username: String, password: String) -> String:
+	var res := await _request(server, HTTPClient.METHOD_POST, "/api/v1/login",
+			{"username": username, "password": password})
+	if res["error"].is_empty():
+		server_url = server
+		_session = res["data"]["session"]
+		characters = res["data"]["characters"]
+	return res["error"]
+
+
+func create_character(char_name: String, model: String) -> String:
+	var res := await _request(server_url, HTTPClient.METHOD_POST, "/api/v1/characters",
+			{"name": char_name, "model": model})
+	if res["error"].is_empty():
+		characters.append(res["data"]["character"])
+	return res["error"]
+
+
+func play(character_id: int) -> String:
+	close()
+	var res := await _request(server_url, HTTPClient.METHOD_POST, "/api/v1/play", {"character_id": character_id})
+	if not res["error"].is_empty():
+		return res["error"]
+	_ticket = res["data"]["ticket"]
+	var ws_url := server_url.replace("https://", "wss://").replace("http://", "ws://") + str(res["data"]["ws_path"])
 	_ws = WebSocketPeer.new()
-	err = _ws.connect_to_url(ws_url)
+	_ws.inbound_buffer_size = 1 << 20
+	var err := _ws.connect_to_url(ws_url)
 	if err != OK:
 		_ws = null
 		return "WebSocket connection failed (%s)" % error_string(err)
@@ -54,6 +68,30 @@ func login(server: String, player_name: String, model: String) -> String:
 	_was_open = false
 	_last_error = ""
 	return ""
+
+
+## Returns {"error": String, "data": Variant}.
+func _request(server: String, method: int, path: String, body: Dictionary) -> Dictionary:
+	var http := HTTPRequest.new()
+	add_child(http)
+	var headers := PackedStringArray(["Content-Type: application/json"])
+	if not _session.is_empty():
+		headers.append("Authorization: Bearer " + _session)
+	var err := http.request(server + path, headers, method, JSON.stringify(body))
+	if err != OK:
+		http.queue_free()
+		return {"error": "Request failed (%s)" % error_string(err), "data": null}
+	var res: Array = await http.request_completed
+	http.queue_free()
+	if res[0] != HTTPRequest.RESULT_SUCCESS:
+		return {"error": "Cannot reach the server at %s" % server, "data": null}
+	var data = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
+	if res[1] >= 300:
+		var msg := "Server returned HTTP %d" % res[1]
+		if typeof(data) == TYPE_DICTIONARY and data.has("error"):
+			msg = data["error"]
+		return {"error": msg, "data": data}
+	return {"error": "", "data": data}
 
 
 func close() -> void:
@@ -79,6 +117,15 @@ func send_move(seq: int, dir_x: float, dir_z: float, yaw: float) -> void:
 	m.yaw = yaw
 	var msg := PB.ClientMessage.new()
 	msg.move = m
+	send(msg)
+
+
+func send_skill(skill_id: int, target_id: int) -> void:
+	var u := PB.UseSkill.new()
+	u.skill_id = skill_id
+	u.target_id = target_id
+	var msg := PB.ClientMessage.new()
+	msg.use_skill = u
 	send(msg)
 
 
@@ -113,7 +160,7 @@ func _process(delta: float) -> void:
 func _send_hello() -> void:
 	_hello_sent = true
 	var hello := PB.Hello.new()
-	hello.token = _token
+	hello.token = _ticket
 	hello.protocol_version = PB.ProtocolVersion.PROTOCOL_VERSION_CURRENT
 	var msg := PB.ClientMessage.new()
 	msg.hello = hello
@@ -138,6 +185,8 @@ func _dispatch(bytes: PackedByteArray) -> void:
 			snapshot_received.emit(msg.snapshot)
 		"welcome":
 			welcomed.emit(msg.welcome)
+		"skill_rejected":
+			skill_rejected.emit(msg.skill_rejected.skill_id, msg.skill_rejected.reason)
 		"pong":
 			rtt_ms = Time.get_ticks_msec() - msg.pong.client_time_ms
 		"error":

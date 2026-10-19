@@ -27,7 +27,7 @@ Initial target: **one server, 500–1,000 concurrent players**, Windows for deve
 | Wire protocol | **Protocol Buffers** (managed with `buf`) | One schema → Go + GDScript code. Versioned, compact. |
 | Transport | **WebSocket**, binary frames (`coder/websocket`) | Works through firewalls and in web exports; enough for tab-target combat. Transport is behind an interface so KCP/UDP can be added later. |
 | Scripting | **Lua** via `gopher-lua` | Skills, quests, NPC AI, breakthroughs. Sandboxed, hot-reloadable. |
-| Database | **PostgreSQL** + `pgx` + `sqlc` + `goose` migrations | Transactions for trades/market, typed queries (no SQL injection by construction). |
+| Database | **PostgreSQL** + `pgx` + `goose` migrations (embedded) | Transactions for trades/market; parameterized queries only (no SQL injection). `sqlc` deferred: its PostgreSQL parser needs cgo, which the Windows dev setup lacks. |
 | Cache / presence | None in v1 → **Valkey** when we split processes | Avoid infrastructure we do not need yet. |
 | Message bus | None in v1 → **NATS** when zones run in separate processes | Same reason. |
 | Pathfinding | Navmesh exported from Godot, A* on the server (evaluate `arl/go-detour`) | The server must validate movement and drive NPCs. |
@@ -209,7 +209,7 @@ Lua runs in one sandboxed VM per zone (no `os`, `io`, `debug`), with an instruct
 ### 5.6 Persistence strategy
 
 - Character state lives in memory in the zone; **write-behind** every ~30 s for dirty characters, plus immediately on logout, zone transfer and any economic transaction.
-- Schema managed by `goose` migrations; queries written in SQL and compiled to typed Go with `sqlc`.
+- Schema managed by `goose` migrations embedded in the server binary and applied at startup; queries are hand-written, parameterized `pgx` calls in `internal/account` (revisit `sqlc` once a cgo-capable CI exists).
 
 ## 6. Content pipeline
 
@@ -253,7 +253,7 @@ YAML + Lua (/content) ──contentc──▶ validated bundle
 | Milestone | Deliverable |
 |---|---|
 | **M0 — Skeleton** ✅ | Monorepo, proto + codegen, auth, gateway, one zone; two Godot clients see each other walk on a test map. Auth is a dev login with in-memory tickets; accounts and PostgreSQL move to M1. |
-| **M1 — Living zone** | Interest management, NPCs with Lua AI, basic tab-target combat, persistence, bot client. |
+| **M1 — Living zone** ✅ | Accounts and characters in PostgreSQL, interest management, NPCs with Lua AI, basic tab-target combat, persistence, bot client with combat mode. |
 | **M2 — Content pipeline** | `contentc`, archetype/variant data, one class per world playable, hot reload. |
 | **M3 — Cultivation** | Realms, breakthroughs, instanced tribulations, specializations. |
 | **M4 — Economy** | Items, ledger, inventory, gathering, crafting, trading. |

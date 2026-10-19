@@ -1,46 +1,34 @@
-// Package auth issues the short-lived tickets a client presents to the
-// gateway in its Hello message.
-//
-// M0 has no accounts: the dev login accepts any valid name. Real accounts
-// (Argon2id hashes in PostgreSQL) replace DevLoginHandler in M1; the ticket
-// flow stays the same.
+// Package auth issues random tokens with an expiry: account sessions for the
+// HTTP API and single-use play tickets the client presents to the gateway in
+// its Hello message.
 package auth
 
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
-	"net/http"
-	"regexp"
 	"sync"
 	"time"
 )
 
-// Identity is who a ticket logs in as.
-type Identity struct {
-	Name  string
-	Model string
-}
-
-type ticket struct {
-	id      Identity
+type item[T any] struct {
+	value   T
 	expires time.Time
 }
 
-// Store holds single-use tickets in memory.
-type Store struct {
-	mu      sync.Mutex
-	tickets map[string]ticket
-	ttl     time.Duration
-	now     func() time.Time
+// Store maps random tokens to values in memory.
+type Store[T any] struct {
+	mu    sync.Mutex
+	items map[string]item[T]
+	ttl   time.Duration
+	now   func() time.Time
 }
 
-func NewStore(ttl time.Duration) *Store {
-	return &Store{tickets: make(map[string]ticket), ttl: ttl, now: time.Now}
+func NewStore[T any](ttl time.Duration) *Store[T] {
+	return &Store[T]{items: make(map[string]item[T]), ttl: ttl, now: time.Now}
 }
 
-// Issue returns a new random ticket for id.
-func (s *Store) Issue(id Identity) (string, error) {
+// Issue returns a new random token for v.
+func (s *Store[T]) Issue(v T) (string, error) {
 	var b [32]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", err
@@ -50,69 +38,40 @@ func (s *Store) Issue(id Identity) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
-	for k, t := range s.tickets {
-		if now.After(t.expires) {
-			delete(s.tickets, k)
+	for k, it := range s.items {
+		if now.After(it.expires) {
+			delete(s.items, k)
 		}
 	}
-	s.tickets[tok] = ticket{id: id, expires: now.Add(s.ttl)}
+	s.items[tok] = item[T]{value: v, expires: now.Add(s.ttl)}
 	return tok, nil
 }
 
-// Redeem consumes a ticket. Each ticket works once.
-func (s *Store) Redeem(tok string) (Identity, bool) {
+// Redeem consumes a single-use token.
+func (s *Store[T]) Redeem(tok string) (T, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	t, ok := s.tickets[tok]
-	if !ok {
-		return Identity{}, false
+	it, ok := s.items[tok]
+	delete(s.items, tok)
+	if !ok || s.now().After(it.expires) {
+		var zero T
+		return zero, false
 	}
-	delete(s.tickets, tok)
-	if s.now().After(t.expires) {
-		return Identity{}, false
+	return it.value, true
+}
+
+// Get looks up a reusable token and extends its expiry (sliding session).
+func (s *Store[T]) Get(tok string) (T, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	it, ok := s.items[tok]
+	now := s.now()
+	if !ok || now.After(it.expires) {
+		delete(s.items, tok)
+		var zero T
+		return zero, false
 	}
-	return t.id, true
-}
-
-var validName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{2,15}$`)
-
-type loginRequest struct {
-	Name  string `json:"name"`
-	Model string `json:"model"`
-}
-
-type loginResponse struct {
-	Token  string `json:"token"`
-	WSPath string `json:"ws_path"`
-}
-
-// DevLoginHandler serves POST {"name","model"} -> {"token","ws_path"}.
-// models is the set of character models the client may pick.
-func DevLoginHandler(s *Store, models map[string]bool, wsPath string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		var req loginRequest
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&req); err != nil {
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		if !validName.MatchString(req.Name) {
-			http.Error(w, "name must be 3-16 letters, digits or _, starting with a letter", http.StatusBadRequest)
-			return
-		}
-		if !models[req.Model] {
-			http.Error(w, "unknown model", http.StatusBadRequest)
-			return
-		}
-		tok, err := s.Issue(Identity{Name: req.Name, Model: req.Model})
-		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(loginResponse{Token: tok, WSPath: wsPath})
-	})
+	it.expires = now.Add(s.ttl)
+	s.items[tok] = it
+	return it.value, true
 }

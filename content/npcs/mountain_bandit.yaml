@@ -1,0 +1,19 @@
+key: mountain_bandit
+name: Mountain Bandit
+model: bandit
+level: 2
+hp: 60
+speed: 3.5
+exp: 35
+respawn_ms: 15000
+ai: ai/melee_basic.lua
+# Numbers the AI script reads with npc:stat(name).
+stats:
+  attack_range: 2.2
+  aggro_radius: 8
+  leash_radius: 25
+  wander_radius: 6
+attack:
+  damage: [5, 8]
+  cooldown_ms: 1800
+  anim: Punch_Jab
