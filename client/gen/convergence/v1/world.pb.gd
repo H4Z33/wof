@@ -191,7 +191,7 @@ class _Reader:
 
 enum ProtocolVersion {
 	PROTOCOL_VERSION_UNSPECIFIED = 0,
-	PROTOCOL_VERSION_CURRENT = 8,
+	PROTOCOL_VERSION_CURRENT = 9,
 }
 
 enum FateOmen {
@@ -300,12 +300,16 @@ class ClientMessage:
 	var move: MoveInput = null
 	var ping: Ping = null
 	var use_skill: UseSkill = null
+	var raise_attribute: RaiseAttribute = null
+	var choose_spec: ChooseSpec = null
 
 	func which_payload() -> String:
 		if hello != null: return "hello"
 		if move != null: return "move"
 		if ping != null: return "ping"
 		if use_skill != null: return "use_skill"
+		if raise_attribute != null: return "raise_attribute"
+		if choose_spec != null: return "choose_spec"
 		return ""
 
 	func _write(w: _Writer) -> void:
@@ -317,6 +321,10 @@ class ClientMessage:
 			w.message(12, ping)
 		if use_skill != null:
 			w.message(13, use_skill)
+		if raise_attribute != null:
+			w.message(14, raise_attribute)
+		if choose_spec != null:
+			w.message(15, choose_spec)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -334,6 +342,8 @@ class ClientMessage:
 						move = null
 						ping = null
 						use_skill = null
+						raise_attribute = null
+						choose_spec = null
 						hello = v
 				11:
 					if wt != 2:
@@ -346,6 +356,8 @@ class ClientMessage:
 						hello = null
 						ping = null
 						use_skill = null
+						raise_attribute = null
+						choose_spec = null
 						move = v
 				12:
 					if wt != 2:
@@ -358,6 +370,8 @@ class ClientMessage:
 						hello = null
 						move = null
 						use_skill = null
+						raise_attribute = null
+						choose_spec = null
 						ping = v
 				13:
 					if wt != 2:
@@ -370,7 +384,37 @@ class ClientMessage:
 						hello = null
 						move = null
 						ping = null
+						raise_attribute = null
+						choose_spec = null
 						use_skill = v
+				14:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := RaiseAttribute.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						hello = null
+						move = null
+						ping = null
+						use_skill = null
+						choose_spec = null
+						raise_attribute = v
+				15:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := ChooseSpec.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						hello = null
+						move = null
+						ping = null
+						use_skill = null
+						raise_attribute = null
+						choose_spec = v
 				_:
 					r.skip(wt)
 
@@ -382,6 +426,70 @@ class ClientMessage:
 	# Returns null if the bytes are malformed.
 	static func from_bytes(b: PackedByteArray) -> ClientMessage:
 		var m := ClientMessage.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class RaiseAttribute:
+	extends RefCounted
+	var key: String = ""
+
+	func _write(w: _Writer) -> void:
+		if not key.is_empty():
+			w.tag(1, 2)
+			w.string(key)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: key = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> RaiseAttribute:
+		var m := RaiseAttribute.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class ChooseSpec:
+	extends RefCounted
+	var key: String = ""
+
+	func _write(w: _Writer) -> void:
+		if not key.is_empty():
+			w.tag(1, 2)
+			w.string(key)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: key = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> ChooseSpec:
+		var m := ChooseSpec.new()
 		var r := _Reader.new(b, 0, b.size())
 		m._read(r)
 		return null if r.failed else m
@@ -571,6 +679,7 @@ class ServerMessage:
 	var error: ServerError = null
 	var skill_rejected: SkillRejected = null
 	var fate: FateEvent = null
+	var progression: Progression = null
 
 	func which_payload() -> String:
 		if welcome != null: return "welcome"
@@ -579,6 +688,7 @@ class ServerMessage:
 		if error != null: return "error"
 		if skill_rejected != null: return "skill_rejected"
 		if fate != null: return "fate"
+		if progression != null: return "progression"
 		return ""
 
 	func _write(w: _Writer) -> void:
@@ -594,6 +704,8 @@ class ServerMessage:
 			w.message(14, skill_rejected)
 		if fate != null:
 			w.message(15, fate)
+		if progression != null:
+			w.message(16, progression)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -613,6 +725,7 @@ class ServerMessage:
 						error = null
 						skill_rejected = null
 						fate = null
+						progression = null
 						welcome = v
 				11:
 					if wt != 2:
@@ -627,6 +740,7 @@ class ServerMessage:
 						error = null
 						skill_rejected = null
 						fate = null
+						progression = null
 						snapshot = v
 				12:
 					if wt != 2:
@@ -641,6 +755,7 @@ class ServerMessage:
 						error = null
 						skill_rejected = null
 						fate = null
+						progression = null
 						pong = v
 				13:
 					if wt != 2:
@@ -655,6 +770,7 @@ class ServerMessage:
 						pong = null
 						skill_rejected = null
 						fate = null
+						progression = null
 						error = v
 				14:
 					if wt != 2:
@@ -669,6 +785,7 @@ class ServerMessage:
 						pong = null
 						error = null
 						fate = null
+						progression = null
 						skill_rejected = v
 				15:
 					if wt != 2:
@@ -683,7 +800,23 @@ class ServerMessage:
 						pong = null
 						error = null
 						skill_rejected = null
+						progression = null
 						fate = v
+				16:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := Progression.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						welcome = null
+						snapshot = null
+						pong = null
+						error = null
+						skill_rejected = null
+						fate = null
+						progression = v
 				_:
 					r.skip(wt)
 
@@ -695,6 +828,287 @@ class ServerMessage:
 	# Returns null if the bytes are malformed.
 	static func from_bytes(b: PackedByteArray) -> ServerMessage:
 		var m := ServerMessage.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class Progression:
+	extends RefCounted
+	var disciplines: Array[DisciplineState] = []
+	var attributes: Array[AttributeState] = []
+	var spec: String = ""
+	var spec_options: Array[SpecInfo] = []
+	var spec_unlock_ranks: int = 0
+	var skills: Array[SkillInfo] = []
+	var move_speed: float = 0.0
+
+	func _write(w: _Writer) -> void:
+		for v in disciplines:
+			w.message(1, v)
+		for v in attributes:
+			w.message(2, v)
+		if not spec.is_empty():
+			w.tag(3, 2)
+			w.string(spec)
+		for v in spec_options:
+			w.message(4, v)
+		if spec_unlock_ranks != 0:
+			w.tag(5, 0)
+			w.varint(spec_unlock_ranks)
+		for v in skills:
+			w.message(6, v)
+		if move_speed != 0.0:
+			w.tag(7, 5)
+			w.f32(move_speed)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := DisciplineState.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						disciplines.append(v)
+				2:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := AttributeState.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						attributes.append(v)
+				3:
+					if wt == 2: spec = r.string()
+					else: r.skip(wt)
+				4:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := SpecInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						spec_options.append(v)
+				5:
+					if wt == 0: spec_unlock_ranks = r.uint32()
+					else: r.skip(wt)
+				6:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := SkillInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						skills.append(v)
+				7:
+					if wt == 5: move_speed = r.f32()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> Progression:
+		var m := Progression.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class DisciplineState:
+	extends RefCounted
+	var key: String = ""
+	var name: String = ""
+	var xp: int = 0
+	var ranks: int = 0
+	var affinity: bool = false
+
+	func _write(w: _Writer) -> void:
+		if not key.is_empty():
+			w.tag(1, 2)
+			w.string(key)
+		if not name.is_empty():
+			w.tag(2, 2)
+			w.string(name)
+		if xp != 0:
+			w.tag(3, 0)
+			w.varint(xp)
+		if ranks != 0:
+			w.tag(4, 0)
+			w.varint(ranks)
+		if affinity != false:
+			w.tag(5, 0)
+			w.boolean(affinity)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: key = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 2: name = r.string()
+					else: r.skip(wt)
+				3:
+					if wt == 0: xp = r.varint()
+					else: r.skip(wt)
+				4:
+					if wt == 0: ranks = r.uint32()
+					else: r.skip(wt)
+				5:
+					if wt == 0: affinity = r.boolean()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> DisciplineState:
+		var m := DisciplineState.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class AttributeState:
+	extends RefCounted
+	var key: String = ""
+	var name: String = ""
+	var discipline: String = ""
+	var description: String = ""
+	var rank: int = 0
+	var cap: int = 0
+	var next_cost: int = 0
+
+	func _write(w: _Writer) -> void:
+		if not key.is_empty():
+			w.tag(1, 2)
+			w.string(key)
+		if not name.is_empty():
+			w.tag(2, 2)
+			w.string(name)
+		if not discipline.is_empty():
+			w.tag(3, 2)
+			w.string(discipline)
+		if not description.is_empty():
+			w.tag(4, 2)
+			w.string(description)
+		if rank != 0:
+			w.tag(5, 0)
+			w.varint(rank)
+		if cap != 0:
+			w.tag(6, 0)
+			w.varint(cap)
+		if next_cost != 0:
+			w.tag(7, 0)
+			w.varint(next_cost)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: key = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 2: name = r.string()
+					else: r.skip(wt)
+				3:
+					if wt == 2: discipline = r.string()
+					else: r.skip(wt)
+				4:
+					if wt == 2: description = r.string()
+					else: r.skip(wt)
+				5:
+					if wt == 0: rank = r.uint32()
+					else: r.skip(wt)
+				6:
+					if wt == 0: cap = r.uint32()
+					else: r.skip(wt)
+				7:
+					if wt == 0: next_cost = r.varint()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> AttributeState:
+		var m := AttributeState.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class SpecInfo:
+	extends RefCounted
+	var key: String = ""
+	var name: String = ""
+	var description: String = ""
+	var skill_name: String = ""
+
+	func _write(w: _Writer) -> void:
+		if not key.is_empty():
+			w.tag(1, 2)
+			w.string(key)
+		if not name.is_empty():
+			w.tag(2, 2)
+			w.string(name)
+		if not description.is_empty():
+			w.tag(3, 2)
+			w.string(description)
+		if not skill_name.is_empty():
+			w.tag(4, 2)
+			w.string(skill_name)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: key = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 2: name = r.string()
+					else: r.skip(wt)
+				3:
+					if wt == 2: description = r.string()
+					else: r.skip(wt)
+				4:
+					if wt == 2: skill_name = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> SpecInfo:
+		var m := SpecInfo.new()
 		var r := _Reader.new(b, 0, b.size())
 		m._read(r)
 		return null if r.failed else m

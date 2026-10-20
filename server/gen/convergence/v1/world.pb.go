@@ -26,18 +26,18 @@ type ProtocolVersion int32
 
 const (
 	ProtocolVersion_PROTOCOL_VERSION_UNSPECIFIED ProtocolVersion = 0
-	ProtocolVersion_PROTOCOL_VERSION_CURRENT     ProtocolVersion = 8
+	ProtocolVersion_PROTOCOL_VERSION_CURRENT     ProtocolVersion = 9
 )
 
 // Enum value maps for ProtocolVersion.
 var (
 	ProtocolVersion_name = map[int32]string{
 		0: "PROTOCOL_VERSION_UNSPECIFIED",
-		8: "PROTOCOL_VERSION_CURRENT",
+		9: "PROTOCOL_VERSION_CURRENT",
 	}
 	ProtocolVersion_value = map[string]int32{
 		"PROTOCOL_VERSION_UNSPECIFIED": 0,
-		"PROTOCOL_VERSION_CURRENT":     8,
+		"PROTOCOL_VERSION_CURRENT":     9,
 	}
 )
 
@@ -495,6 +495,8 @@ type ClientMessage struct {
 	//	*ClientMessage_Move
 	//	*ClientMessage_Ping
 	//	*ClientMessage_UseSkill
+	//	*ClientMessage_RaiseAttribute
+	//	*ClientMessage_ChooseSpec
 	Payload       isClientMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -573,6 +575,24 @@ func (x *ClientMessage) GetUseSkill() *UseSkill {
 	return nil
 }
 
+func (x *ClientMessage) GetRaiseAttribute() *RaiseAttribute {
+	if x != nil {
+		if x, ok := x.Payload.(*ClientMessage_RaiseAttribute); ok {
+			return x.RaiseAttribute
+		}
+	}
+	return nil
+}
+
+func (x *ClientMessage) GetChooseSpec() *ChooseSpec {
+	if x != nil {
+		if x, ok := x.Payload.(*ClientMessage_ChooseSpec); ok {
+			return x.ChooseSpec
+		}
+	}
+	return nil
+}
+
 type isClientMessage_Payload interface {
 	isClientMessage_Payload()
 }
@@ -593,6 +613,14 @@ type ClientMessage_UseSkill struct {
 	UseSkill *UseSkill `protobuf:"bytes,13,opt,name=use_skill,json=useSkill,proto3,oneof"`
 }
 
+type ClientMessage_RaiseAttribute struct {
+	RaiseAttribute *RaiseAttribute `protobuf:"bytes,14,opt,name=raise_attribute,json=raiseAttribute,proto3,oneof"`
+}
+
+type ClientMessage_ChooseSpec struct {
+	ChooseSpec *ChooseSpec `protobuf:"bytes,15,opt,name=choose_spec,json=chooseSpec,proto3,oneof"`
+}
+
 func (*ClientMessage_Hello) isClientMessage_Payload() {}
 
 func (*ClientMessage_Move) isClientMessage_Payload() {}
@@ -600,6 +628,100 @@ func (*ClientMessage_Move) isClientMessage_Payload() {}
 func (*ClientMessage_Ping) isClientMessage_Payload() {}
 
 func (*ClientMessage_UseSkill) isClientMessage_Payload() {}
+
+func (*ClientMessage_RaiseAttribute) isClientMessage_Payload() {}
+
+func (*ClientMessage_ChooseSpec) isClientMessage_Payload() {}
+
+// Spend discipline experience on one rank of an attribute.
+type RaiseAttribute struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RaiseAttribute) Reset() {
+	*x = RaiseAttribute{}
+	mi := &file_convergence_v1_world_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RaiseAttribute) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RaiseAttribute) ProtoMessage() {}
+
+func (x *RaiseAttribute) ProtoReflect() protoreflect.Message {
+	mi := &file_convergence_v1_world_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RaiseAttribute.ProtoReflect.Descriptor instead.
+func (*RaiseAttribute) Descriptor() ([]byte, []int) {
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *RaiseAttribute) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+// Pick the class's second path, once.
+type ChooseSpec struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChooseSpec) Reset() {
+	*x = ChooseSpec{}
+	mi := &file_convergence_v1_world_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChooseSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChooseSpec) ProtoMessage() {}
+
+func (x *ChooseSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_convergence_v1_world_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChooseSpec.ProtoReflect.Descriptor instead.
+func (*ChooseSpec) Descriptor() ([]byte, []int) {
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ChooseSpec) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
 
 // First message on a new connection. The ticket comes from POST /api/v1/play.
 type Hello struct {
@@ -612,7 +734,7 @@ type Hello struct {
 
 func (x *Hello) Reset() {
 	*x = Hello{}
-	mi := &file_convergence_v1_world_proto_msgTypes[2]
+	mi := &file_convergence_v1_world_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -624,7 +746,7 @@ func (x *Hello) String() string {
 func (*Hello) ProtoMessage() {}
 
 func (x *Hello) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[2]
+	mi := &file_convergence_v1_world_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -637,7 +759,7 @@ func (x *Hello) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Hello.ProtoReflect.Descriptor instead.
 func (*Hello) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{2}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Hello) GetToken() string {
@@ -676,7 +798,7 @@ type MoveInput struct {
 
 func (x *MoveInput) Reset() {
 	*x = MoveInput{}
-	mi := &file_convergence_v1_world_proto_msgTypes[3]
+	mi := &file_convergence_v1_world_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -688,7 +810,7 @@ func (x *MoveInput) String() string {
 func (*MoveInput) ProtoMessage() {}
 
 func (x *MoveInput) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[3]
+	mi := &file_convergence_v1_world_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -701,7 +823,7 @@ func (x *MoveInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveInput.ProtoReflect.Descriptor instead.
 func (*MoveInput) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{3}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *MoveInput) GetSeq() uint32 {
@@ -755,7 +877,7 @@ type Ping struct {
 
 func (x *Ping) Reset() {
 	*x = Ping{}
-	mi := &file_convergence_v1_world_proto_msgTypes[4]
+	mi := &file_convergence_v1_world_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -767,7 +889,7 @@ func (x *Ping) String() string {
 func (*Ping) ProtoMessage() {}
 
 func (x *Ping) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[4]
+	mi := &file_convergence_v1_world_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -780,7 +902,7 @@ func (x *Ping) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ping.ProtoReflect.Descriptor instead.
 func (*Ping) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{4}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Ping) GetClientTimeMs() uint64 {
@@ -802,7 +924,7 @@ type UseSkill struct {
 
 func (x *UseSkill) Reset() {
 	*x = UseSkill{}
-	mi := &file_convergence_v1_world_proto_msgTypes[5]
+	mi := &file_convergence_v1_world_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -814,7 +936,7 @@ func (x *UseSkill) String() string {
 func (*UseSkill) ProtoMessage() {}
 
 func (x *UseSkill) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[5]
+	mi := &file_convergence_v1_world_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -827,7 +949,7 @@ func (x *UseSkill) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UseSkill.ProtoReflect.Descriptor instead.
 func (*UseSkill) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{5}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *UseSkill) GetSkillId() uint32 {
@@ -854,6 +976,7 @@ type ServerMessage struct {
 	//	*ServerMessage_Error
 	//	*ServerMessage_SkillRejected
 	//	*ServerMessage_Fate
+	//	*ServerMessage_Progression
 	Payload       isServerMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -861,7 +984,7 @@ type ServerMessage struct {
 
 func (x *ServerMessage) Reset() {
 	*x = ServerMessage{}
-	mi := &file_convergence_v1_world_proto_msgTypes[6]
+	mi := &file_convergence_v1_world_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -873,7 +996,7 @@ func (x *ServerMessage) String() string {
 func (*ServerMessage) ProtoMessage() {}
 
 func (x *ServerMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[6]
+	mi := &file_convergence_v1_world_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -886,7 +1009,7 @@ func (x *ServerMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerMessage.ProtoReflect.Descriptor instead.
 func (*ServerMessage) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{6}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ServerMessage) GetPayload() isServerMessage_Payload {
@@ -950,6 +1073,15 @@ func (x *ServerMessage) GetFate() *FateEvent {
 	return nil
 }
 
+func (x *ServerMessage) GetProgression() *Progression {
+	if x != nil {
+		if x, ok := x.Payload.(*ServerMessage_Progression); ok {
+			return x.Progression
+		}
+	}
+	return nil
+}
+
 type isServerMessage_Payload interface {
 	isServerMessage_Payload()
 }
@@ -978,6 +1110,10 @@ type ServerMessage_Fate struct {
 	Fate *FateEvent `protobuf:"bytes,15,opt,name=fate,proto3,oneof"`
 }
 
+type ServerMessage_Progression struct {
+	Progression *Progression `protobuf:"bytes,16,opt,name=progression,proto3,oneof"`
+}
+
 func (*ServerMessage_Welcome) isServerMessage_Payload() {}
 
 func (*ServerMessage_Snapshot) isServerMessage_Payload() {}
@@ -989,6 +1125,343 @@ func (*ServerMessage_Error) isServerMessage_Payload() {}
 func (*ServerMessage_SkillRejected) isServerMessage_Payload() {}
 
 func (*ServerMessage_Fate) isServerMessage_Payload() {}
+
+func (*ServerMessage_Progression) isServerMessage_Payload() {}
+
+// The character's build. Sent on join and whenever it changes.
+type Progression struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Disciplines []*DisciplineState     `protobuf:"bytes,1,rep,name=disciplines,proto3" json:"disciplines,omitempty"`
+	Attributes  []*AttributeState      `protobuf:"bytes,2,rep,name=attributes,proto3" json:"attributes,omitempty"`
+	Spec        string                 `protobuf:"bytes,3,opt,name=spec,proto3" json:"spec,omitempty"`
+	// Offered when the class discipline has enough ranks and none is chosen.
+	SpecOptions     []*SpecInfo `protobuf:"bytes,4,rep,name=spec_options,json=specOptions,proto3" json:"spec_options,omitempty"`
+	SpecUnlockRanks uint32      `protobuf:"varint,5,opt,name=spec_unlock_ranks,json=specUnlockRanks,proto3" json:"spec_unlock_ranks,omitempty"`
+	// Current skill bar (grows with the specialization's skill).
+	Skills []*SkillInfo `protobuf:"bytes,6,rep,name=skills,proto3" json:"skills,omitempty"`
+	// Movement speed after attributes (meters per second).
+	MoveSpeed     float32 `protobuf:"fixed32,7,opt,name=move_speed,json=moveSpeed,proto3" json:"move_speed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Progression) Reset() {
+	*x = Progression{}
+	mi := &file_convergence_v1_world_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Progression) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Progression) ProtoMessage() {}
+
+func (x *Progression) ProtoReflect() protoreflect.Message {
+	mi := &file_convergence_v1_world_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Progression.ProtoReflect.Descriptor instead.
+func (*Progression) Descriptor() ([]byte, []int) {
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *Progression) GetDisciplines() []*DisciplineState {
+	if x != nil {
+		return x.Disciplines
+	}
+	return nil
+}
+
+func (x *Progression) GetAttributes() []*AttributeState {
+	if x != nil {
+		return x.Attributes
+	}
+	return nil
+}
+
+func (x *Progression) GetSpec() string {
+	if x != nil {
+		return x.Spec
+	}
+	return ""
+}
+
+func (x *Progression) GetSpecOptions() []*SpecInfo {
+	if x != nil {
+		return x.SpecOptions
+	}
+	return nil
+}
+
+func (x *Progression) GetSpecUnlockRanks() uint32 {
+	if x != nil {
+		return x.SpecUnlockRanks
+	}
+	return 0
+}
+
+func (x *Progression) GetSkills() []*SkillInfo {
+	if x != nil {
+		return x.Skills
+	}
+	return nil
+}
+
+func (x *Progression) GetMoveSpeed() float32 {
+	if x != nil {
+		return x.MoveSpeed
+	}
+	return 0
+}
+
+type DisciplineState struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Key   string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Name  string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// Experience available to spend.
+	Xp uint64 `protobuf:"varint,3,opt,name=xp,proto3" json:"xp,omitempty"`
+	// Ranks bought in this discipline's attributes.
+	Ranks uint32 `protobuf:"varint,4,opt,name=ranks,proto3" json:"ranks,omitempty"`
+	// The class's own discipline (cheaper, higher cap).
+	Affinity      bool `protobuf:"varint,5,opt,name=affinity,proto3" json:"affinity,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DisciplineState) Reset() {
+	*x = DisciplineState{}
+	mi := &file_convergence_v1_world_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisciplineState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisciplineState) ProtoMessage() {}
+
+func (x *DisciplineState) ProtoReflect() protoreflect.Message {
+	mi := &file_convergence_v1_world_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisciplineState.ProtoReflect.Descriptor instead.
+func (*DisciplineState) Descriptor() ([]byte, []int) {
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *DisciplineState) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *DisciplineState) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DisciplineState) GetXp() uint64 {
+	if x != nil {
+		return x.Xp
+	}
+	return 0
+}
+
+func (x *DisciplineState) GetRanks() uint32 {
+	if x != nil {
+		return x.Ranks
+	}
+	return 0
+}
+
+func (x *DisciplineState) GetAffinity() bool {
+	if x != nil {
+		return x.Affinity
+	}
+	return false
+}
+
+type AttributeState struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Discipline    string                 `protobuf:"bytes,3,opt,name=discipline,proto3" json:"discipline,omitempty"`
+	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	Rank          uint32                 `protobuf:"varint,5,opt,name=rank,proto3" json:"rank,omitempty"`
+	Cap           uint32                 `protobuf:"varint,6,opt,name=cap,proto3" json:"cap,omitempty"`
+	NextCost      uint64                 `protobuf:"varint,7,opt,name=next_cost,json=nextCost,proto3" json:"next_cost,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AttributeState) Reset() {
+	*x = AttributeState{}
+	mi := &file_convergence_v1_world_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AttributeState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AttributeState) ProtoMessage() {}
+
+func (x *AttributeState) ProtoReflect() protoreflect.Message {
+	mi := &file_convergence_v1_world_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AttributeState.ProtoReflect.Descriptor instead.
+func (*AttributeState) Descriptor() ([]byte, []int) {
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *AttributeState) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *AttributeState) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AttributeState) GetDiscipline() string {
+	if x != nil {
+		return x.Discipline
+	}
+	return ""
+}
+
+func (x *AttributeState) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *AttributeState) GetRank() uint32 {
+	if x != nil {
+		return x.Rank
+	}
+	return 0
+}
+
+func (x *AttributeState) GetCap() uint32 {
+	if x != nil {
+		return x.Cap
+	}
+	return 0
+}
+
+func (x *AttributeState) GetNextCost() uint64 {
+	if x != nil {
+		return x.NextCost
+	}
+	return 0
+}
+
+type SpecInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	SkillName     string                 `protobuf:"bytes,4,opt,name=skill_name,json=skillName,proto3" json:"skill_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SpecInfo) Reset() {
+	*x = SpecInfo{}
+	mi := &file_convergence_v1_world_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SpecInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SpecInfo) ProtoMessage() {}
+
+func (x *SpecInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_convergence_v1_world_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SpecInfo.ProtoReflect.Descriptor instead.
+func (*SpecInfo) Descriptor() ([]byte, []int) {
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *SpecInfo) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *SpecInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *SpecInfo) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *SpecInfo) GetSkillName() string {
+	if x != nil {
+		return x.SkillName
+	}
+	return ""
+}
 
 type Welcome struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
@@ -1016,7 +1489,7 @@ type Welcome struct {
 
 func (x *Welcome) Reset() {
 	*x = Welcome{}
-	mi := &file_convergence_v1_world_proto_msgTypes[7]
+	mi := &file_convergence_v1_world_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1028,7 +1501,7 @@ func (x *Welcome) String() string {
 func (*Welcome) ProtoMessage() {}
 
 func (x *Welcome) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[7]
+	mi := &file_convergence_v1_world_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1041,7 +1514,7 @@ func (x *Welcome) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Welcome.ProtoReflect.Descriptor instead.
 func (*Welcome) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{7}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Welcome) GetEntityId() uint32 {
@@ -1165,7 +1638,7 @@ type WeaponInfo struct {
 
 func (x *WeaponInfo) Reset() {
 	*x = WeaponInfo{}
-	mi := &file_convergence_v1_world_proto_msgTypes[8]
+	mi := &file_convergence_v1_world_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1177,7 +1650,7 @@ func (x *WeaponInfo) String() string {
 func (*WeaponInfo) ProtoMessage() {}
 
 func (x *WeaponInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[8]
+	mi := &file_convergence_v1_world_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1190,7 +1663,7 @@ func (x *WeaponInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WeaponInfo.ProtoReflect.Descriptor instead.
 func (*WeaponInfo) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{8}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *WeaponInfo) GetName() string {
@@ -1261,7 +1734,7 @@ type ActionRules struct {
 
 func (x *ActionRules) Reset() {
 	*x = ActionRules{}
-	mi := &file_convergence_v1_world_proto_msgTypes[9]
+	mi := &file_convergence_v1_world_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1273,7 +1746,7 @@ func (x *ActionRules) String() string {
 func (*ActionRules) ProtoMessage() {}
 
 func (x *ActionRules) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[9]
+	mi := &file_convergence_v1_world_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1286,7 +1759,7 @@ func (x *ActionRules) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActionRules.ProtoReflect.Descriptor instead.
 func (*ActionRules) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{9}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ActionRules) GetSwingTicks() uint32 {
@@ -1367,7 +1840,7 @@ type ClassInfo struct {
 
 func (x *ClassInfo) Reset() {
 	*x = ClassInfo{}
-	mi := &file_convergence_v1_world_proto_msgTypes[10]
+	mi := &file_convergence_v1_world_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1379,7 +1852,7 @@ func (x *ClassInfo) String() string {
 func (*ClassInfo) ProtoMessage() {}
 
 func (x *ClassInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[10]
+	mi := &file_convergence_v1_world_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1392,7 +1865,7 @@ func (x *ClassInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClassInfo.ProtoReflect.Descriptor instead.
 func (*ClassInfo) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{10}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ClassInfo) GetKey() string {
@@ -1448,7 +1921,7 @@ type TerrainInfo struct {
 
 func (x *TerrainInfo) Reset() {
 	*x = TerrainInfo{}
-	mi := &file_convergence_v1_world_proto_msgTypes[11]
+	mi := &file_convergence_v1_world_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1460,7 +1933,7 @@ func (x *TerrainInfo) String() string {
 func (*TerrainInfo) ProtoMessage() {}
 
 func (x *TerrainInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[11]
+	mi := &file_convergence_v1_world_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1473,7 +1946,7 @@ func (x *TerrainInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TerrainInfo.ProtoReflect.Descriptor instead.
 func (*TerrainInfo) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{11}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *TerrainInfo) GetFile() string {
@@ -1522,7 +1995,7 @@ type InventoryItem struct {
 
 func (x *InventoryItem) Reset() {
 	*x = InventoryItem{}
-	mi := &file_convergence_v1_world_proto_msgTypes[12]
+	mi := &file_convergence_v1_world_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1534,7 +2007,7 @@ func (x *InventoryItem) String() string {
 func (*InventoryItem) ProtoMessage() {}
 
 func (x *InventoryItem) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[12]
+	mi := &file_convergence_v1_world_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1547,7 +2020,7 @@ func (x *InventoryItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InventoryItem.ProtoReflect.Descriptor instead.
 func (*InventoryItem) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{12}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *InventoryItem) GetKey() string {
@@ -1596,7 +2069,7 @@ type SkillInfo struct {
 
 func (x *SkillInfo) Reset() {
 	*x = SkillInfo{}
-	mi := &file_convergence_v1_world_proto_msgTypes[13]
+	mi := &file_convergence_v1_world_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1608,7 +2081,7 @@ func (x *SkillInfo) String() string {
 func (*SkillInfo) ProtoMessage() {}
 
 func (x *SkillInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[13]
+	mi := &file_convergence_v1_world_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1621,7 +2094,7 @@ func (x *SkillInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillInfo.ProtoReflect.Descriptor instead.
 func (*SkillInfo) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{13}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SkillInfo) GetId() uint32 {
@@ -1723,7 +2196,7 @@ type PlayerStatus struct {
 
 func (x *PlayerStatus) Reset() {
 	*x = PlayerStatus{}
-	mi := &file_convergence_v1_world_proto_msgTypes[14]
+	mi := &file_convergence_v1_world_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1735,7 +2208,7 @@ func (x *PlayerStatus) String() string {
 func (*PlayerStatus) ProtoMessage() {}
 
 func (x *PlayerStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[14]
+	mi := &file_convergence_v1_world_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1748,7 +2221,7 @@ func (x *PlayerStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerStatus.ProtoReflect.Descriptor instead.
 func (*PlayerStatus) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{14}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *PlayerStatus) GetLevel() uint32 {
@@ -1854,7 +2327,7 @@ type EntityState struct {
 
 func (x *EntityState) Reset() {
 	*x = EntityState{}
-	mi := &file_convergence_v1_world_proto_msgTypes[15]
+	mi := &file_convergence_v1_world_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1866,7 +2339,7 @@ func (x *EntityState) String() string {
 func (*EntityState) ProtoMessage() {}
 
 func (x *EntityState) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[15]
+	mi := &file_convergence_v1_world_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1879,7 +2352,7 @@ func (x *EntityState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntityState.ProtoReflect.Descriptor instead.
 func (*EntityState) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{15}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *EntityState) GetId() uint32 {
@@ -1966,7 +2439,7 @@ type EntitySpawn struct {
 
 func (x *EntitySpawn) Reset() {
 	*x = EntitySpawn{}
-	mi := &file_convergence_v1_world_proto_msgTypes[16]
+	mi := &file_convergence_v1_world_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1978,7 +2451,7 @@ func (x *EntitySpawn) String() string {
 func (*EntitySpawn) ProtoMessage() {}
 
 func (x *EntitySpawn) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[16]
+	mi := &file_convergence_v1_world_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1991,7 +2464,7 @@ func (x *EntitySpawn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntitySpawn.ProtoReflect.Descriptor instead.
 func (*EntitySpawn) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{16}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *EntitySpawn) GetId() uint32 {
@@ -2081,7 +2554,7 @@ type CombatEvent struct {
 
 func (x *CombatEvent) Reset() {
 	*x = CombatEvent{}
-	mi := &file_convergence_v1_world_proto_msgTypes[17]
+	mi := &file_convergence_v1_world_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2093,7 +2566,7 @@ func (x *CombatEvent) String() string {
 func (*CombatEvent) ProtoMessage() {}
 
 func (x *CombatEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[17]
+	mi := &file_convergence_v1_world_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2106,7 +2579,7 @@ func (x *CombatEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CombatEvent.ProtoReflect.Descriptor instead.
 func (*CombatEvent) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{17}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *CombatEvent) GetKind() CombatEventKind {
@@ -2184,7 +2657,7 @@ type Snapshot struct {
 
 func (x *Snapshot) Reset() {
 	*x = Snapshot{}
-	mi := &file_convergence_v1_world_proto_msgTypes[18]
+	mi := &file_convergence_v1_world_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2196,7 +2669,7 @@ func (x *Snapshot) String() string {
 func (*Snapshot) ProtoMessage() {}
 
 func (x *Snapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[18]
+	mi := &file_convergence_v1_world_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2209,7 +2682,7 @@ func (x *Snapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Snapshot.ProtoReflect.Descriptor instead.
 func (*Snapshot) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{18}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *Snapshot) GetTick() uint32 {
@@ -2286,7 +2759,7 @@ type FateEvent struct {
 
 func (x *FateEvent) Reset() {
 	*x = FateEvent{}
-	mi := &file_convergence_v1_world_proto_msgTypes[19]
+	mi := &file_convergence_v1_world_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2298,7 +2771,7 @@ func (x *FateEvent) String() string {
 func (*FateEvent) ProtoMessage() {}
 
 func (x *FateEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[19]
+	mi := &file_convergence_v1_world_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2311,7 +2784,7 @@ func (x *FateEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FateEvent.ProtoReflect.Descriptor instead.
 func (*FateEvent) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{19}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *FateEvent) GetOmen() FateOmen {
@@ -2389,7 +2862,7 @@ type SkillRejected struct {
 
 func (x *SkillRejected) Reset() {
 	*x = SkillRejected{}
-	mi := &file_convergence_v1_world_proto_msgTypes[20]
+	mi := &file_convergence_v1_world_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2401,7 +2874,7 @@ func (x *SkillRejected) String() string {
 func (*SkillRejected) ProtoMessage() {}
 
 func (x *SkillRejected) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[20]
+	mi := &file_convergence_v1_world_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2414,7 +2887,7 @@ func (x *SkillRejected) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillRejected.ProtoReflect.Descriptor instead.
 func (*SkillRejected) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{20}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SkillRejected) GetSkillId() uint32 {
@@ -2441,7 +2914,7 @@ type Pong struct {
 
 func (x *Pong) Reset() {
 	*x = Pong{}
-	mi := &file_convergence_v1_world_proto_msgTypes[21]
+	mi := &file_convergence_v1_world_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2453,7 +2926,7 @@ func (x *Pong) String() string {
 func (*Pong) ProtoMessage() {}
 
 func (x *Pong) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[21]
+	mi := &file_convergence_v1_world_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2466,7 +2939,7 @@ func (x *Pong) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Pong.ProtoReflect.Descriptor instead.
 func (*Pong) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{21}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *Pong) GetClientTimeMs() uint64 {
@@ -2493,7 +2966,7 @@ type ServerError struct {
 
 func (x *ServerError) Reset() {
 	*x = ServerError{}
-	mi := &file_convergence_v1_world_proto_msgTypes[22]
+	mi := &file_convergence_v1_world_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2505,7 +2978,7 @@ func (x *ServerError) String() string {
 func (*ServerError) ProtoMessage() {}
 
 func (x *ServerError) ProtoReflect() protoreflect.Message {
-	mi := &file_convergence_v1_world_proto_msgTypes[22]
+	mi := &file_convergence_v1_world_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2518,7 +2991,7 @@ func (x *ServerError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerError.ProtoReflect.Descriptor instead.
 func (*ServerError) Descriptor() ([]byte, []int) {
-	return file_convergence_v1_world_proto_rawDescGZIP(), []int{22}
+	return file_convergence_v1_world_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ServerError) GetCode() string {
@@ -2543,14 +3016,22 @@ const file_convergence_v1_world_proto_rawDesc = "" +
 	"\x04Vec3\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x02R\x01x\x12\f\n" +
 	"\x01y\x18\x02 \x01(\x02R\x01y\x12\f\n" +
-	"\x01z\x18\x03 \x01(\x02R\x01z\"\xdf\x01\n" +
+	"\x01z\x18\x03 \x01(\x02R\x01z\"\xe9\x02\n" +
 	"\rClientMessage\x12-\n" +
 	"\x05hello\x18\n" +
 	" \x01(\v2\x15.convergence.v1.HelloH\x00R\x05hello\x12/\n" +
 	"\x04move\x18\v \x01(\v2\x19.convergence.v1.MoveInputH\x00R\x04move\x12*\n" +
 	"\x04ping\x18\f \x01(\v2\x14.convergence.v1.PingH\x00R\x04ping\x127\n" +
-	"\tuse_skill\x18\r \x01(\v2\x18.convergence.v1.UseSkillH\x00R\buseSkillB\t\n" +
-	"\apayload\"H\n" +
+	"\tuse_skill\x18\r \x01(\v2\x18.convergence.v1.UseSkillH\x00R\buseSkill\x12I\n" +
+	"\x0fraise_attribute\x18\x0e \x01(\v2\x1e.convergence.v1.RaiseAttributeH\x00R\x0eraiseAttribute\x12=\n" +
+	"\vchoose_spec\x18\x0f \x01(\v2\x1a.convergence.v1.ChooseSpecH\x00R\n" +
+	"chooseSpecB\t\n" +
+	"\apayload\"\"\n" +
+	"\x0eRaiseAttribute\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\"\x1e\n" +
+	"\n" +
+	"ChooseSpec\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\"H\n" +
 	"\x05Hello\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12)\n" +
 	"\x10protocol_version\x18\x02 \x01(\rR\x0fprotocolVersion\"\x94\x01\n" +
@@ -2566,7 +3047,7 @@ const file_convergence_v1_world_proto_rawDesc = "" +
 	"\x0eclient_time_ms\x18\x01 \x01(\x04R\fclientTimeMs\"B\n" +
 	"\bUseSkill\x12\x19\n" +
 	"\bskill_id\x18\x01 \x01(\rR\askillId\x12\x1b\n" +
-	"\ttarget_id\x18\x02 \x01(\rR\btargetId\"\xe1\x02\n" +
+	"\ttarget_id\x18\x02 \x01(\rR\btargetId\"\xa2\x03\n" +
 	"\rServerMessage\x123\n" +
 	"\awelcome\x18\n" +
 	" \x01(\v2\x17.convergence.v1.WelcomeH\x00R\awelcome\x126\n" +
@@ -2574,8 +3055,42 @@ const file_convergence_v1_world_proto_rawDesc = "" +
 	"\x04pong\x18\f \x01(\v2\x14.convergence.v1.PongH\x00R\x04pong\x123\n" +
 	"\x05error\x18\r \x01(\v2\x1b.convergence.v1.ServerErrorH\x00R\x05error\x12F\n" +
 	"\x0eskill_rejected\x18\x0e \x01(\v2\x1d.convergence.v1.SkillRejectedH\x00R\rskillRejected\x12/\n" +
-	"\x04fate\x18\x0f \x01(\v2\x19.convergence.v1.FateEventH\x00R\x04fateB\t\n" +
-	"\apayload\"\x9b\x05\n" +
+	"\x04fate\x18\x0f \x01(\v2\x19.convergence.v1.FateEventH\x00R\x04fate\x12?\n" +
+	"\vprogression\x18\x10 \x01(\v2\x1b.convergence.v1.ProgressionH\x00R\vprogressionB\t\n" +
+	"\apayload\"\xdf\x02\n" +
+	"\vProgression\x12A\n" +
+	"\vdisciplines\x18\x01 \x03(\v2\x1f.convergence.v1.DisciplineStateR\vdisciplines\x12>\n" +
+	"\n" +
+	"attributes\x18\x02 \x03(\v2\x1e.convergence.v1.AttributeStateR\n" +
+	"attributes\x12\x12\n" +
+	"\x04spec\x18\x03 \x01(\tR\x04spec\x12;\n" +
+	"\fspec_options\x18\x04 \x03(\v2\x18.convergence.v1.SpecInfoR\vspecOptions\x12*\n" +
+	"\x11spec_unlock_ranks\x18\x05 \x01(\rR\x0fspecUnlockRanks\x121\n" +
+	"\x06skills\x18\x06 \x03(\v2\x19.convergence.v1.SkillInfoR\x06skills\x12\x1d\n" +
+	"\n" +
+	"move_speed\x18\a \x01(\x02R\tmoveSpeed\"y\n" +
+	"\x0fDisciplineState\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x0e\n" +
+	"\x02xp\x18\x03 \x01(\x04R\x02xp\x12\x14\n" +
+	"\x05ranks\x18\x04 \x01(\rR\x05ranks\x12\x1a\n" +
+	"\baffinity\x18\x05 \x01(\bR\baffinity\"\xbb\x01\n" +
+	"\x0eAttributeState\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1e\n" +
+	"\n" +
+	"discipline\x18\x03 \x01(\tR\n" +
+	"discipline\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x12\n" +
+	"\x04rank\x18\x05 \x01(\rR\x04rank\x12\x10\n" +
+	"\x03cap\x18\x06 \x01(\rR\x03cap\x12\x1b\n" +
+	"\tnext_cost\x18\a \x01(\x04R\bnextCost\"q\n" +
+	"\bSpecInfo\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x1d\n" +
+	"\n" +
+	"skill_name\x18\x04 \x01(\tR\tskillName\"\x9b\x05\n" +
 	"\aWelcome\x12\x1b\n" +
 	"\tentity_id\x18\x01 \x01(\rR\bentityId\x12\x17\n" +
 	"\azone_id\x18\x02 \x01(\tR\x06zoneId\x12\x1b\n" +
@@ -2737,7 +3252,7 @@ const file_convergence_v1_world_proto_rawDesc = "" +
 	"\amessage\x18\x02 \x01(\tR\amessage*Q\n" +
 	"\x0fProtocolVersion\x12 \n" +
 	"\x1cPROTOCOL_VERSION_UNSPECIFIED\x10\x00\x12\x1c\n" +
-	"\x18PROTOCOL_VERSION_CURRENT\x10\b*V\n" +
+	"\x18PROTOCOL_VERSION_CURRENT\x10\t*V\n" +
 	"\bFateOmen\x12\x19\n" +
 	"\x15FATE_OMEN_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11FATE_OMEN_FORTUNE\x10\x01\x12\x18\n" +
@@ -2796,74 +3311,87 @@ func file_convergence_v1_world_proto_rawDescGZIP() []byte {
 }
 
 var file_convergence_v1_world_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_convergence_v1_world_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_convergence_v1_world_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_convergence_v1_world_proto_goTypes = []any{
-	(ProtocolVersion)(0),  // 0: convergence.v1.ProtocolVersion
-	(FateOmen)(0),         // 1: convergence.v1.FateOmen
-	(EntityKind)(0),       // 2: convergence.v1.EntityKind
-	(EffectFlag)(0),       // 3: convergence.v1.EffectFlag
-	(InputButton)(0),      // 4: convergence.v1.InputButton
-	(ActionState)(0),      // 5: convergence.v1.ActionState
-	(CombatEventKind)(0),  // 6: convergence.v1.CombatEventKind
-	(*Vec3)(nil),          // 7: convergence.v1.Vec3
-	(*ClientMessage)(nil), // 8: convergence.v1.ClientMessage
-	(*Hello)(nil),         // 9: convergence.v1.Hello
-	(*MoveInput)(nil),     // 10: convergence.v1.MoveInput
-	(*Ping)(nil),          // 11: convergence.v1.Ping
-	(*UseSkill)(nil),      // 12: convergence.v1.UseSkill
-	(*ServerMessage)(nil), // 13: convergence.v1.ServerMessage
-	(*Welcome)(nil),       // 14: convergence.v1.Welcome
-	(*WeaponInfo)(nil),    // 15: convergence.v1.WeaponInfo
-	(*ActionRules)(nil),   // 16: convergence.v1.ActionRules
-	(*ClassInfo)(nil),     // 17: convergence.v1.ClassInfo
-	(*TerrainInfo)(nil),   // 18: convergence.v1.TerrainInfo
-	(*InventoryItem)(nil), // 19: convergence.v1.InventoryItem
-	(*SkillInfo)(nil),     // 20: convergence.v1.SkillInfo
-	(*PlayerStatus)(nil),  // 21: convergence.v1.PlayerStatus
-	(*EntityState)(nil),   // 22: convergence.v1.EntityState
-	(*EntitySpawn)(nil),   // 23: convergence.v1.EntitySpawn
-	(*CombatEvent)(nil),   // 24: convergence.v1.CombatEvent
-	(*Snapshot)(nil),      // 25: convergence.v1.Snapshot
-	(*FateEvent)(nil),     // 26: convergence.v1.FateEvent
-	(*SkillRejected)(nil), // 27: convergence.v1.SkillRejected
-	(*Pong)(nil),          // 28: convergence.v1.Pong
-	(*ServerError)(nil),   // 29: convergence.v1.ServerError
+	(ProtocolVersion)(0),    // 0: convergence.v1.ProtocolVersion
+	(FateOmen)(0),           // 1: convergence.v1.FateOmen
+	(EntityKind)(0),         // 2: convergence.v1.EntityKind
+	(EffectFlag)(0),         // 3: convergence.v1.EffectFlag
+	(InputButton)(0),        // 4: convergence.v1.InputButton
+	(ActionState)(0),        // 5: convergence.v1.ActionState
+	(CombatEventKind)(0),    // 6: convergence.v1.CombatEventKind
+	(*Vec3)(nil),            // 7: convergence.v1.Vec3
+	(*ClientMessage)(nil),   // 8: convergence.v1.ClientMessage
+	(*RaiseAttribute)(nil),  // 9: convergence.v1.RaiseAttribute
+	(*ChooseSpec)(nil),      // 10: convergence.v1.ChooseSpec
+	(*Hello)(nil),           // 11: convergence.v1.Hello
+	(*MoveInput)(nil),       // 12: convergence.v1.MoveInput
+	(*Ping)(nil),            // 13: convergence.v1.Ping
+	(*UseSkill)(nil),        // 14: convergence.v1.UseSkill
+	(*ServerMessage)(nil),   // 15: convergence.v1.ServerMessage
+	(*Progression)(nil),     // 16: convergence.v1.Progression
+	(*DisciplineState)(nil), // 17: convergence.v1.DisciplineState
+	(*AttributeState)(nil),  // 18: convergence.v1.AttributeState
+	(*SpecInfo)(nil),        // 19: convergence.v1.SpecInfo
+	(*Welcome)(nil),         // 20: convergence.v1.Welcome
+	(*WeaponInfo)(nil),      // 21: convergence.v1.WeaponInfo
+	(*ActionRules)(nil),     // 22: convergence.v1.ActionRules
+	(*ClassInfo)(nil),       // 23: convergence.v1.ClassInfo
+	(*TerrainInfo)(nil),     // 24: convergence.v1.TerrainInfo
+	(*InventoryItem)(nil),   // 25: convergence.v1.InventoryItem
+	(*SkillInfo)(nil),       // 26: convergence.v1.SkillInfo
+	(*PlayerStatus)(nil),    // 27: convergence.v1.PlayerStatus
+	(*EntityState)(nil),     // 28: convergence.v1.EntityState
+	(*EntitySpawn)(nil),     // 29: convergence.v1.EntitySpawn
+	(*CombatEvent)(nil),     // 30: convergence.v1.CombatEvent
+	(*Snapshot)(nil),        // 31: convergence.v1.Snapshot
+	(*FateEvent)(nil),       // 32: convergence.v1.FateEvent
+	(*SkillRejected)(nil),   // 33: convergence.v1.SkillRejected
+	(*Pong)(nil),            // 34: convergence.v1.Pong
+	(*ServerError)(nil),     // 35: convergence.v1.ServerError
 }
 var file_convergence_v1_world_proto_depIdxs = []int32{
-	9,  // 0: convergence.v1.ClientMessage.hello:type_name -> convergence.v1.Hello
-	10, // 1: convergence.v1.ClientMessage.move:type_name -> convergence.v1.MoveInput
-	11, // 2: convergence.v1.ClientMessage.ping:type_name -> convergence.v1.Ping
-	12, // 3: convergence.v1.ClientMessage.use_skill:type_name -> convergence.v1.UseSkill
-	14, // 4: convergence.v1.ServerMessage.welcome:type_name -> convergence.v1.Welcome
-	25, // 5: convergence.v1.ServerMessage.snapshot:type_name -> convergence.v1.Snapshot
-	28, // 6: convergence.v1.ServerMessage.pong:type_name -> convergence.v1.Pong
-	29, // 7: convergence.v1.ServerMessage.error:type_name -> convergence.v1.ServerError
-	27, // 8: convergence.v1.ServerMessage.skill_rejected:type_name -> convergence.v1.SkillRejected
-	26, // 9: convergence.v1.ServerMessage.fate:type_name -> convergence.v1.FateEvent
-	7,  // 10: convergence.v1.Welcome.spawn:type_name -> convergence.v1.Vec3
-	20, // 11: convergence.v1.Welcome.skills:type_name -> convergence.v1.SkillInfo
-	21, // 12: convergence.v1.Welcome.status:type_name -> convergence.v1.PlayerStatus
-	19, // 13: convergence.v1.Welcome.inventory:type_name -> convergence.v1.InventoryItem
-	18, // 14: convergence.v1.Welcome.terrain:type_name -> convergence.v1.TerrainInfo
-	17, // 15: convergence.v1.Welcome.class_info:type_name -> convergence.v1.ClassInfo
-	15, // 16: convergence.v1.Welcome.weapon:type_name -> convergence.v1.WeaponInfo
-	16, // 17: convergence.v1.Welcome.action_rules:type_name -> convergence.v1.ActionRules
-	7,  // 18: convergence.v1.EntityState.pos:type_name -> convergence.v1.Vec3
-	5,  // 19: convergence.v1.EntityState.action:type_name -> convergence.v1.ActionState
-	22, // 20: convergence.v1.EntitySpawn.state:type_name -> convergence.v1.EntityState
-	2,  // 21: convergence.v1.EntitySpawn.kind:type_name -> convergence.v1.EntityKind
-	6,  // 22: convergence.v1.CombatEvent.kind:type_name -> convergence.v1.CombatEventKind
-	22, // 23: convergence.v1.Snapshot.entities:type_name -> convergence.v1.EntityState
-	23, // 24: convergence.v1.Snapshot.spawns:type_name -> convergence.v1.EntitySpawn
-	24, // 25: convergence.v1.Snapshot.events:type_name -> convergence.v1.CombatEvent
-	21, // 26: convergence.v1.Snapshot.status:type_name -> convergence.v1.PlayerStatus
-	1,  // 27: convergence.v1.FateEvent.omen:type_name -> convergence.v1.FateOmen
-	19, // 28: convergence.v1.FateEvent.inventory:type_name -> convergence.v1.InventoryItem
-	29, // [29:29] is the sub-list for method output_type
-	29, // [29:29] is the sub-list for method input_type
-	29, // [29:29] is the sub-list for extension type_name
-	29, // [29:29] is the sub-list for extension extendee
-	0,  // [0:29] is the sub-list for field type_name
+	11, // 0: convergence.v1.ClientMessage.hello:type_name -> convergence.v1.Hello
+	12, // 1: convergence.v1.ClientMessage.move:type_name -> convergence.v1.MoveInput
+	13, // 2: convergence.v1.ClientMessage.ping:type_name -> convergence.v1.Ping
+	14, // 3: convergence.v1.ClientMessage.use_skill:type_name -> convergence.v1.UseSkill
+	9,  // 4: convergence.v1.ClientMessage.raise_attribute:type_name -> convergence.v1.RaiseAttribute
+	10, // 5: convergence.v1.ClientMessage.choose_spec:type_name -> convergence.v1.ChooseSpec
+	20, // 6: convergence.v1.ServerMessage.welcome:type_name -> convergence.v1.Welcome
+	31, // 7: convergence.v1.ServerMessage.snapshot:type_name -> convergence.v1.Snapshot
+	34, // 8: convergence.v1.ServerMessage.pong:type_name -> convergence.v1.Pong
+	35, // 9: convergence.v1.ServerMessage.error:type_name -> convergence.v1.ServerError
+	33, // 10: convergence.v1.ServerMessage.skill_rejected:type_name -> convergence.v1.SkillRejected
+	32, // 11: convergence.v1.ServerMessage.fate:type_name -> convergence.v1.FateEvent
+	16, // 12: convergence.v1.ServerMessage.progression:type_name -> convergence.v1.Progression
+	17, // 13: convergence.v1.Progression.disciplines:type_name -> convergence.v1.DisciplineState
+	18, // 14: convergence.v1.Progression.attributes:type_name -> convergence.v1.AttributeState
+	19, // 15: convergence.v1.Progression.spec_options:type_name -> convergence.v1.SpecInfo
+	26, // 16: convergence.v1.Progression.skills:type_name -> convergence.v1.SkillInfo
+	7,  // 17: convergence.v1.Welcome.spawn:type_name -> convergence.v1.Vec3
+	26, // 18: convergence.v1.Welcome.skills:type_name -> convergence.v1.SkillInfo
+	27, // 19: convergence.v1.Welcome.status:type_name -> convergence.v1.PlayerStatus
+	25, // 20: convergence.v1.Welcome.inventory:type_name -> convergence.v1.InventoryItem
+	24, // 21: convergence.v1.Welcome.terrain:type_name -> convergence.v1.TerrainInfo
+	23, // 22: convergence.v1.Welcome.class_info:type_name -> convergence.v1.ClassInfo
+	21, // 23: convergence.v1.Welcome.weapon:type_name -> convergence.v1.WeaponInfo
+	22, // 24: convergence.v1.Welcome.action_rules:type_name -> convergence.v1.ActionRules
+	7,  // 25: convergence.v1.EntityState.pos:type_name -> convergence.v1.Vec3
+	5,  // 26: convergence.v1.EntityState.action:type_name -> convergence.v1.ActionState
+	28, // 27: convergence.v1.EntitySpawn.state:type_name -> convergence.v1.EntityState
+	2,  // 28: convergence.v1.EntitySpawn.kind:type_name -> convergence.v1.EntityKind
+	6,  // 29: convergence.v1.CombatEvent.kind:type_name -> convergence.v1.CombatEventKind
+	28, // 30: convergence.v1.Snapshot.entities:type_name -> convergence.v1.EntityState
+	29, // 31: convergence.v1.Snapshot.spawns:type_name -> convergence.v1.EntitySpawn
+	30, // 32: convergence.v1.Snapshot.events:type_name -> convergence.v1.CombatEvent
+	27, // 33: convergence.v1.Snapshot.status:type_name -> convergence.v1.PlayerStatus
+	1,  // 34: convergence.v1.FateEvent.omen:type_name -> convergence.v1.FateOmen
+	25, // 35: convergence.v1.FateEvent.inventory:type_name -> convergence.v1.InventoryItem
+	36, // [36:36] is the sub-list for method output_type
+	36, // [36:36] is the sub-list for method input_type
+	36, // [36:36] is the sub-list for extension type_name
+	36, // [36:36] is the sub-list for extension extendee
+	0,  // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_convergence_v1_world_proto_init() }
@@ -2876,14 +3404,17 @@ func file_convergence_v1_world_proto_init() {
 		(*ClientMessage_Move)(nil),
 		(*ClientMessage_Ping)(nil),
 		(*ClientMessage_UseSkill)(nil),
+		(*ClientMessage_RaiseAttribute)(nil),
+		(*ClientMessage_ChooseSpec)(nil),
 	}
-	file_convergence_v1_world_proto_msgTypes[6].OneofWrappers = []any{
+	file_convergence_v1_world_proto_msgTypes[8].OneofWrappers = []any{
 		(*ServerMessage_Welcome)(nil),
 		(*ServerMessage_Snapshot)(nil),
 		(*ServerMessage_Pong)(nil),
 		(*ServerMessage_Error)(nil),
 		(*ServerMessage_SkillRejected)(nil),
 		(*ServerMessage_Fate)(nil),
+		(*ServerMessage_Progression)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -2891,7 +3422,7 @@ func file_convergence_v1_world_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_convergence_v1_world_proto_rawDesc), len(file_convergence_v1_world_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   23,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

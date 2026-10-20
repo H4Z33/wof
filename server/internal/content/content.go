@@ -36,6 +36,9 @@ type Skill struct {
 	Projectile  bool               `yaml:"projectile"`
 	Script      string             `yaml:"script"`
 	Params      map[string]float64 `yaml:"params"`
+	// Discipline that earns experience from this skill's damage; defaults
+	// to the class weapon's.
+	Discipline string `yaml:"discipline"`
 
 	// ScriptSource is the Lua text of Script.
 	ScriptSource string `yaml:"-"`
@@ -75,12 +78,70 @@ type Class struct {
 		DecayPerS float64 `yaml:"decay_per_s"`
 		Color     string  `yaml:"color"`
 	} `yaml:"resource"`
-	Skills []string `yaml:"skills"`
-	Weapon Weapon   `yaml:"weapon"`
+	Skills          []string         `yaml:"skills"`
+	Weapon          Weapon           `yaml:"weapon"`
+	Specializations []Specialization `yaml:"specializations"`
 
 	// SkillIDs resolves Skills, in order.
 	SkillIDs []uint32 `yaml:"-"`
 }
+
+// Specialization is a class's second path (a second job): passive
+// modifiers and one extra skill.
+type Specialization struct {
+	Key         string             `yaml:"key"`
+	Name        string             `yaml:"name"`
+	Description string             `yaml:"description"`
+	Modifiers   map[string]float64 `yaml:"modifiers"`
+	Skill       string             `yaml:"skill"`
+}
+
+// SpecModifiers the server knows how to apply.
+var SpecModifiers = map[string]bool{
+	"damage_dealt": true, "damage_taken": true, "max_hp": true, "flourish_mult": true,
+	"heal_power": true, "resource_gain": true, "crit_chance": true,
+}
+
+// Spec finds a specialization of the class.
+func (c *Class) Spec(key string) *Specialization {
+	for i := range c.Specializations {
+		if c.Specializations[i].Key == key {
+			return &c.Specializations[i]
+		}
+	}
+	return nil
+}
+
+// Attribute is one buyable stat of a discipline.
+type Attribute struct {
+	Key         string  `yaml:"-"`
+	Discipline  string  `yaml:"discipline"`
+	Name        string  `yaml:"name"`
+	Description string  `yaml:"description"`
+	PerRank     float64 `yaml:"per_rank"`
+}
+
+// Disciplines configures discipline experience and attributes
+// (content/disciplines.yaml).
+type Disciplines struct {
+	XPPerDamage float64 `yaml:"xp_per_damage"`
+	Disciplines map[string]struct {
+		Name string `yaml:"name"`
+	} `yaml:"disciplines"`
+	Cost struct {
+		Base        float64 `yaml:"base"`
+		OffAffinity float64 `yaml:"off_affinity"`
+	} `yaml:"cost"`
+	Caps struct {
+		Affinity int `yaml:"affinity"`
+		Other    int `yaml:"other"`
+	} `yaml:"caps"`
+	SpecUnlockRanks int                   `yaml:"spec_unlock_ranks"`
+	Attributes      map[string]*Attribute `yaml:"attributes"`
+}
+
+// AttributeKeys are the attributes the server implements, in display order.
+var AttributeKeys = []string{"physique", "toughness", "agility", "accuracy", "spirit", "focus"}
 
 // Weapon is a class's basic attack (left click) and its charged flourish.
 type Weapon struct {
@@ -258,6 +319,8 @@ type Content struct {
 	Classes map[string]*Class
 	// Fate is nil when content/fate.yaml is absent.
 	Fate *Fate
+	// Disciplines is nil when content/disciplines.yaml is absent.
+	Disciplines *Disciplines
 }
 
 // SkillByKey finds a skill by its key.
@@ -354,6 +417,17 @@ func Load(dir string) (*Content, error) {
 		c.Items[it.Key] = it
 	}
 
+	disc := &Disciplines{}
+	switch err := readYAML(filepath.Join(dir, "disciplines.yaml"), disc); {
+	case err == nil:
+		for k, a := range disc.Attributes {
+			a.Key = k
+		}
+		c.Disciplines = disc
+	case !errors.Is(err, os.ErrNotExist):
+		return nil, err
+	}
+
 	fate := &Fate{}
 	switch err := readYAML(filepath.Join(dir, "fate.yaml"), fate); {
 	case err == nil:
@@ -410,6 +484,22 @@ func (c *Content) validate() error {
 				continue
 			}
 			cl.SkillIDs = append(cl.SkillIDs, s.ID)
+			if s.Discipline == "" {
+				s.Discipline = cl.Weapon.Discipline
+			}
+		}
+		for _, sp := range cl.Specializations {
+			s := c.SkillByKey(sp.Skill)
+			if s == nil {
+				errs = append(errs, fmt.Errorf("class %s spec %s: unknown skill %q", key, sp.Key, sp.Skill))
+			} else if s.Discipline == "" {
+				s.Discipline = cl.Weapon.Discipline
+			}
+			for m := range sp.Modifiers {
+				if !SpecModifiers[m] {
+					errs = append(errs, fmt.Errorf("class %s spec %s: unknown modifier %q", key, sp.Key, m))
+				}
+			}
 		}
 	}
 	if len(c.Classes) > 0 {
@@ -438,6 +528,21 @@ func (c *Content) validate() error {
 			if _, ok := c.NPCs[g.NPC]; !ok {
 				errs = append(errs, fmt.Errorf("zone %s group %d: unknown npc %q", id, i, g.NPC))
 			}
+		}
+	}
+	if d := c.Disciplines; d != nil {
+		for _, k := range AttributeKeys {
+			a, ok := d.Attributes[k]
+			if !ok {
+				errs = append(errs, fmt.Errorf("disciplines: attribute %q missing", k))
+				continue
+			}
+			if _, ok := d.Disciplines[a.Discipline]; !ok {
+				errs = append(errs, fmt.Errorf("disciplines: attribute %s has unknown discipline %q", k, a.Discipline))
+			}
+		}
+		if d.Cost.Base <= 0 || d.Caps.Affinity <= 0 || d.Caps.Other < 0 || d.SpecUnlockRanks <= 0 {
+			errs = append(errs, errors.New("disciplines: cost, caps and spec_unlock_ranks must be positive"))
 		}
 	}
 	if f := c.Fate; f != nil {

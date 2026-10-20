@@ -19,6 +19,7 @@ const Hud := preload("res://game/hud.gd")
 const Terrain := preload("res://game/terrain.gd")
 const VFX := preload("res://game/vfx.gd")
 const ContentDB := preload("res://game/content_db.gd")
+const BuildPanel := preload("res://game/build_panel.gd")
 const INTERP_TICKS := 2.0  # remote entities render this far in the past
 const SNAP_DISTANCE := 3.0  # corrections larger than this teleport instead of blending
 const TAB_RANGE := 40.0
@@ -69,6 +70,7 @@ var _cam_yaw := 0.0
 var _cam_pitch := 0.45
 var _cam_distance := 7.0
 var _weapon: PB.WeaponInfo
+var _build: BuildPanel
 var _hud: Hud
 
 
@@ -103,6 +105,11 @@ func start(welcome: PB.Welcome) -> void:
 	Net.snapshot_received.connect(_on_snapshot)
 	Net.skill_rejected.connect(_on_skill_rejected)
 	Net.fate_received.connect(_on_fate)
+	Net.progression_received.connect(_on_progression)
+	_build = BuildPanel.new()
+	_hud.add_child(_build)
+	_build.raise_requested.connect(Net.send_raise)
+	_build.spec_chosen.connect(Net.send_choose_spec)
 	if not autofight and not autowalk:
 		_capture_mouse(true)
 
@@ -376,7 +383,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 			KEY_I:
 				_hud.toggle_inventory()
-			KEY_1, KEY_2, KEY_3, KEY_4:
+			KEY_C:
+				toggle_build()
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				var i: int = event.physical_keycode - KEY_1
 				if i < _skill_order.size():
 					use_skill(_skill_order[i])
@@ -713,6 +722,26 @@ func _on_fate(ev: PB.FateEvent) -> void:
 		_hud.set_inventory(ev.inventory)
 
 
+## Shows or hides the build panel; the cursor is freed while it is open.
+func toggle_build() -> void:
+	_build.visible = not _build.visible
+	_capture_mouse(not _build.visible)
+
+
+func _on_progression(pr: PB.Progression) -> void:
+	move_speed = pr.move_speed
+	if pr.skills.size() != _skill_order.size():
+		_skills.clear()
+		_skill_order.clear()
+		for s in pr.skills:
+			_skills[s.id] = s
+			_skill_order.append(s.id)
+		_hud.set_skills(pr.skills)
+	if not pr.spec_options.is_empty() and not _build.visible:
+		_hud.show_message("A new path opens: press C to choose your specialization", Color(1.0, 0.85, 0.4))
+	_build.show_progression(pr)
+
+
 func _on_status(s: PB.PlayerStatus) -> void:
 	if _status != null:
 		if s.level > _status.level:
@@ -762,7 +791,7 @@ func _update_target_visuals() -> void:
 
 
 func _update_hud() -> void:
-	_hud.debug_label.text = "%s  ·  entity %d  ·  visible %d  ·  rtt %d ms\nWASD move · LMB attack (hold: flourish) · RMB block · Space roll · F lock · 1-4 skills · I inventory · Esc cursor" % [
+	_hud.debug_label.text = "%s  ·  entity %d  ·  visible %d  ·  rtt %d ms\nWASD move · LMB attack (hold: flourish) · RMB block · Space roll · F lock · 1-5 skills · C build · I inventory · Esc cursor" % [
 		zone_id, my_id, _entities.size(), Net.rtt_ms]
 	_hud.set_crosshair(_target_id == 0 and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED)
 	_hud.set_charging(_act == A_CHARGING and _seq - _charge_seq >= (_rules.charge_ticks if _rules else 8))

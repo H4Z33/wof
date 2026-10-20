@@ -9,6 +9,7 @@ signal welcomed(welcome: PB.Welcome)
 signal snapshot_received(snapshot: PB.Snapshot)
 signal skill_rejected(skill_id: int, reason: String)
 signal fate_received(event: PB.FateEvent)
+signal progression_received(progression: PB.Progression)
 signal disconnected(reason: String)
 
 const PB := preload("res://gen/convergence/v1/world.pb.gd")
@@ -132,6 +133,22 @@ func send_skill(skill_id: int, target_id: int) -> void:
 	send(msg)
 
 
+func send_raise(key: String) -> void:
+	var r := PB.RaiseAttribute.new()
+	r.key = key
+	var msg := PB.ClientMessage.new()
+	msg.raise_attribute = r
+	send(msg)
+
+
+func send_choose_spec(key: String) -> void:
+	var c := PB.ChooseSpec.new()
+	c.key = key
+	var msg := PB.ClientMessage.new()
+	msg.choose_spec = c
+	send(msg)
+
+
 func _process(delta: float) -> void:
 	if _ws == null:
 		return
@@ -192,6 +209,8 @@ func _dispatch(bytes: PackedByteArray) -> void:
 			skill_rejected.emit(msg.skill_rejected.skill_id, msg.skill_rejected.reason)
 		"fate":
 			fate_received.emit(msg.fate)
+		"progression":
+			progression_received.emit(msg.progression)
 		"pong":
 			rtt_ms = Time.get_ticks_msec() - msg.pong.client_time_ms
 		"error":

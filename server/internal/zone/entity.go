@@ -4,6 +4,7 @@ import (
 	pb "convergence/server/gen/convergence/v1"
 	"convergence/server/internal/content"
 	"convergence/server/internal/fate"
+	"convergence/server/internal/model"
 	"convergence/server/internal/script"
 )
 
@@ -123,7 +124,12 @@ type player struct {
 	queuedAttack bool
 	iframeUntil  uint32 // server tick
 	combo        int    // hits in a row without taking damage
-	deadUntil    uint32 // respawn tick while dead, else 0
+
+	// Build: discipline experience, attribute ranks, specialization.
+	prog      model.Progression
+	progDirty bool
+	progSent  uint32
+	deadUntil uint32 // respawn tick while dead, else 0
 
 	// Fate.
 	luck        int

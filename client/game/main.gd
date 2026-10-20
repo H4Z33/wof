@@ -10,6 +10,7 @@
 ##   --autowalk         walk in a circle (automated tests)
 ##   --autofight        target, chase and attack the nearest enemy (automated tests)
 ##   --cam_yaw=deg      initial camera angle around the player (0 = front view)
+##   --show_build       open the build panel (C) on entering
 ##   --screenshot=path  save a screenshot after --screenshot_delay seconds (default 6)
 ##   --screenshot_on_fate=path  save path_1..3.png right after the first fate events
 extends Node
@@ -154,6 +155,8 @@ func _on_welcomed(welcome: PB.Welcome) -> void:
 	_world.autofight = _opts.has("autofight")
 	add_child(_world)
 	_world.start(welcome)
+	if _opts.has("show_build"):
+		_world.toggle_build()
 	if _opts.has("cam_yaw"):
 		_world.set_camera_yaw(deg_to_rad(float(_opts["cam_yaw"])))
 	get_window().title = "Convergence — %s" % welcome.character_name

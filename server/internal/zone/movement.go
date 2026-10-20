@@ -36,7 +36,7 @@ func (z *Zone) applyInputs(p *player, dt float64) {
 		if override {
 			dx, dz = rollDir[0], rollDir[1]
 		}
-		step := z.cfg.MoveSpeed * speed * dt
+		step := z.moveSpeed(p) * speed * dt
 		e.pos = z.walk(e.pos, dx*step, dz*step)
 		if y := float64(in.Yaw); !math.IsNaN(y) && !math.IsInf(y, 0) {
 			e.yaw = math.Remainder(y, 2*math.Pi)

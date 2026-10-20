@@ -32,6 +32,9 @@ func (z *Zone) damage(src, t *entity, skillID uint32, base float64, critical boo
 	}
 	dealt, _ := src.multipliers(tick)
 	_, taken := t.multipliers(tick)
+	if tp := t.player; tp != nil {
+		taken *= specMod(tp.class, &tp.prog, "damage_taken")
+	}
 	amount := max(1, min(int(base*dealt*taken+0.5), t.hp))
 	t.hp -= amount
 	t.lastDamagedTick = tick
@@ -43,6 +46,9 @@ func (z *Zone) damage(src, t *entity, skillID uint32, base float64, critical boo
 		Kind: kind, SourceId: src.id, TargetId: t.id, SkillId: skillID,
 		Amount: uint32(amount), Critical: critical, Weapon: z.weaponHit, Flourish: z.flourishHit,
 	})
+	if sp := src.player; sp != nil && t.npc != nil {
+		z.awardDisciplineXP(sp, z.hitDiscipline, amount)
+	}
 	if p := t.player; p != nil {
 		p.dirty = true
 		if !z.blockedHit {

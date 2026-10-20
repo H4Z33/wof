@@ -166,3 +166,78 @@ skills:
     apply: { effect: weakened, duration_s: 10, value: 1.3 }
     anim: Spell_Simple_Shoot
     vfx: mark
+
+  # --- Specialization skills (slot 5) --------------------------------------
+  - id: 151
+    key: thousand_blades
+    name: Thousand Blades
+    description: A storm of cuts around the target.
+    target: enemy
+    range: 3
+    cooldown_ms: 12000
+    cost: 40
+    damage: [14, 20]
+    radius: 4
+    anim: Sword_Regular_Combo
+    vfx: wave
+  - id: 152
+    key: mountain_stance
+    name: Mountain Stance
+    description: Root like a mountain; take far less damage and recover.
+    target: self
+    cooldown_ms: 25000
+    cost: 30
+    heal: [10, 15]
+    apply: { effect: ward, duration_s: 10, value: 0.45 }
+    anim: Idle_Shield_Break
+    vfx: ward
+  - id: 251
+    key: deadeye
+    name: Deadeye
+    description: A perfectly aimed shot from very far.
+    target: enemy
+    range: 32
+    cooldown_ms: 15000
+    cost: 40
+    damage: [32, 44]
+    anim: Pistol_Shoot
+    vfx: beam
+    projectile: true
+  - id: 252
+    key: shrapnel_burst
+    name: Shrapnel Burst
+    description: Bursts around the target, slowing everything it hits.
+    target: enemy
+    range: 16
+    cooldown_ms: 12000
+    cost: 35
+    damage: [11, 15]
+    radius: 5
+    apply: { effect: slowed, duration_s: 5, value: 0.6 }
+    anim: Pistol_Shoot
+    vfx: explosion
+    projectile: true
+  - id: 351
+    key: sanctuary
+    name: Sanctuary
+    description: A holy circle heals and shields everyone near you.
+    target: self
+    cooldown_ms: 25000
+    cost: 50
+    heal: [30, 42]
+    heal_radius: 10
+    apply: { effect: ward, duration_s: 8, value: 0.7 }
+    anim: Spell_Simple_Shoot
+    vfx: heal
+  - id: 352
+    key: soul_rend
+    name: Soul Rend
+    description: Tears at the soul of the target; it burns from within.
+    target: enemy
+    range: 16
+    cooldown_ms: 14000
+    cost: 35
+    damage: [8, 12]
+    apply: { effect: burning, duration_s: 8, value: 7 }
+    anim: Spell_Simple_Shoot
+    vfx: smite

@@ -1,0 +1,62 @@
+# Disciplines (as in Fable) with divergent builds (as in Ragnarok Online).
+#
+# Fighting earns experience in the discipline of what dealt the damage: your
+# weapon or skill. That experience buys ranks in the discipline's two
+# attributes. Your class's discipline is cheap and goes high; the others cost
+# more and stop early, so characters of the same class still end up
+# different, and different classes stay distinct.
+
+# Discipline experience per point of damage dealt (before the combat
+# multiplier, which also applies).
+xp_per_damage: 0.6
+
+disciplines:
+  strength: { name: Strength }
+  skill: { name: Skill }
+  will: { name: Will }
+
+# Cost of the next rank: base × (rank + 1), × off_affinity outside the
+# class's discipline.
+cost:
+  base: 60
+  off_affinity: 1.6
+caps:
+  affinity: 20
+  other: 8
+
+# Ranks needed in the class's discipline to choose a specialization.
+spec_unlock_ranks: 8
+
+# What each rank does. The effects are implemented by the server per key;
+# the numbers live here.
+attributes:
+  physique:
+    discipline: strength
+    name: Physique
+    description: More melee and Strength damage.
+    per_rank: 0.06
+  toughness:
+    discipline: strength
+    name: Toughness
+    description: More health; blocks stop more damage.
+    per_rank: 0.05
+  agility:
+    discipline: skill
+    name: Agility
+    description: Faster movement; a chance to slip past blows.
+    per_rank: 0.015
+  accuracy:
+    discipline: skill
+    name: Accuracy
+    description: More ranged and Skill damage; a chance to crit.
+    per_rank: 0.06
+  spirit:
+    discipline: will
+    name: Spirit
+    description: More Will damage and healing.
+    per_rank: 0.07
+  focus:
+    discipline: will
+    name: Focus
+    description: A bigger, faster-filling resource pool.
+    per_rank: 0.06

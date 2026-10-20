@@ -7,7 +7,7 @@ option go_package = "convergence/server/gen/convergence/v1;convergencev1";
 // Bump when a change breaks older clients. The server rejects mismatches in Hello.
 enum ProtocolVersion {
   PROTOCOL_VERSION_UNSPECIFIED = 0;
-  PROTOCOL_VERSION_CURRENT = 8;
+  PROTOCOL_VERSION_CURRENT = 9;
 }
 
 enum FateOmen {
@@ -92,7 +92,19 @@ message ClientMessage {
     MoveInput move = 11;
     Ping ping = 12;
     UseSkill use_skill = 13;
+    RaiseAttribute raise_attribute = 14;
+    ChooseSpec choose_spec = 15;
   }
+}
+
+// Spend discipline experience on one rank of an attribute.
+message RaiseAttribute {
+  string key = 1;
+}
+
+// Pick the class's second path, once.
+message ChooseSpec {
+  string key = 1;
 }
 
 // First message on a new connection. The ticket comes from POST /api/v1/play.
@@ -142,7 +154,50 @@ message ServerMessage {
     ServerError error = 13;
     SkillRejected skill_rejected = 14;
     FateEvent fate = 15;
+    Progression progression = 16;
   }
+}
+
+// The character's build. Sent on join and whenever it changes.
+message Progression {
+  repeated DisciplineState disciplines = 1;
+  repeated AttributeState attributes = 2;
+  string spec = 3;
+  // Offered when the class discipline has enough ranks and none is chosen.
+  repeated SpecInfo spec_options = 4;
+  uint32 spec_unlock_ranks = 5;
+  // Current skill bar (grows with the specialization's skill).
+  repeated SkillInfo skills = 6;
+  // Movement speed after attributes (meters per second).
+  float move_speed = 7;
+}
+
+message DisciplineState {
+  string key = 1;
+  string name = 2;
+  // Experience available to spend.
+  uint64 xp = 3;
+  // Ranks bought in this discipline's attributes.
+  uint32 ranks = 4;
+  // The class's own discipline (cheaper, higher cap).
+  bool affinity = 5;
+}
+
+message AttributeState {
+  string key = 1;
+  string name = 2;
+  string discipline = 3;
+  string description = 4;
+  uint32 rank = 5;
+  uint32 cap = 6;
+  uint64 next_cost = 7;
+}
+
+message SpecInfo {
+  string key = 1;
+  string name = 2;
+  string description = 3;
+  string skill_name = 4;
 }
 
 message Welcome {

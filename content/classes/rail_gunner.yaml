@@ -30,3 +30,14 @@ weapon:
   anim: Pistol_Shoot
   flourish_anim: Pistol_Shoot
   vfx: bullet
+specializations:
+  - key: sharpshooter
+    name: Sharpshooter
+    description: One shot, one kill. Charged shots hit far harder and crits come often.
+    modifiers: { flourish_mult: 1.4, crit_chance: 0.08 }
+    skill: deadeye
+  - key: artificer
+    name: Artificer
+    description: Builds charge faster and turns it into shrapnel.
+    modifiers: { resource_gain: 1.5, damage_dealt: 1.05 }
+    skill: shrapnel_burst

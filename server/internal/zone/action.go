@@ -2,6 +2,7 @@ package zone
 
 import (
 	"math"
+	"math/rand/v2"
 	"sort"
 
 	pb "convergence/server/gen/convergence/v1"
@@ -269,11 +270,14 @@ func (z *Zone) landWeapon(p *player, h pendingHit) {
 		return
 	}
 
-	mult := 1.0
+	mult := z.damageMult(p, w.Discipline)
 	if h.flourish {
-		mult = w.FlourishMult
+		mult *= w.FlourishMult * specMod(p.class, &p.prog, "flourish_mult")
 	}
-	critical := false
+	critical := z.rollCrit(p)
+	if critical {
+		mult *= critMult
+	}
 	if card, ok := z.fateTrigger(p, fate.TriggerStrike, targets[0]); ok {
 		m, miss := z.applyCard(p, card, targets[0])
 		if miss {
@@ -283,16 +287,16 @@ func (z *Zone) landWeapon(p *player, h pendingHit) {
 			return
 		}
 		mult *= m
-		critical = m > 1
+		critical = critical || m > 1
 	}
-	z.weaponHit, z.flourishHit = true, h.flourish
+	z.weaponHit, z.flourishHit, z.hitDiscipline = true, h.flourish, w.Discipline
 	for _, t := range targets {
 		z.damage(e, t, 0, float64(roll(w.Damage))*rules.DamageMultiplier(e.level)*mult, critical)
 	}
-	z.weaponHit, z.flourishHit = false, false
+	z.weaponHit, z.flourishHit, z.hitDiscipline = false, false, ""
 	p.combo++
 	if w.Gain > 0 && p.class != nil {
-		p.resource = min(float64(p.class.Resource.Max), p.resource+float64(w.Gain))
+		p.resource = min(z.resourceMax(p), p.resource+float64(w.Gain)*specMod(p.class, &p.prog, "resource_gain"))
 	}
 }
 
@@ -388,13 +392,13 @@ func (z *Zone) resolveStrikes(tick uint32) {
 func (z *Zone) strikePlayer(n *npc, t *entity, amount float64) {
 	p := t.player
 	tick := z.tick.Load()
-	if tick < p.iframeUntil {
+	if tick < p.iframeUntil || rand.Float64() < z.dodgeChance(p) {
 		z.events = append(z.events, &pb.CombatEvent{Kind: pb.CombatEventKind_COMBAT_EVENT_KIND_DODGED, SourceId: n.e.id, TargetId: t.id})
 		return
 	}
 	if t.action == pb.ActionState_ACTION_STATE_BLOCK && angleDiff(t.yaw, yawToward(t.pos, n.e.pos)) <= blockArcDeg*math.Pi/180 {
 		z.blockedHit = true
-		z.damage(n.e, t, 0, amount*blockFactor, false)
+		z.damage(n.e, t, 0, amount*z.blockFactorFor(p), false)
 		z.blockedHit = false
 		return
 	}

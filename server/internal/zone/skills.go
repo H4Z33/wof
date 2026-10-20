@@ -68,22 +68,19 @@ func classInfo(c *content.Class) *pb.ClassInfo {
 	return &pb.ClassInfo{Key: c.Key, Name: c.Name, World: c.World, ResourceName: c.Resource.Name, ResourceColor: c.Resource.Color}
 }
 
-// maxHP for a player at a level, by class when there is one.
-func (z *Zone) maxHP(p *player, level int) int {
-	if p.class != nil {
-		return p.class.MaxHP(level)
-	}
-	return rules.MaxHP(level)
-}
-
 // hasSkill reports whether p's class grants the skill (any skill when the
 // content has no classes).
-func (p *player) hasSkill(id uint32) bool {
+func (z *Zone) hasSkill(p *player, id uint32) bool {
 	if p.class == nil {
 		return true
 	}
 	for _, s := range p.class.SkillIDs {
 		if s == id {
+			return true
+		}
+	}
+	if sp := p.class.Spec(p.prog.Spec); sp != nil {
+		if s := z.content.SkillByKey(sp.Skill); s != nil && s.ID == id {
 			return true
 		}
 	}
@@ -93,7 +90,12 @@ func (p *player) hasSkill(id uint32) bool {
 func (z *Zone) skillInfos(p *player) []*pb.SkillInfo {
 	var ids []uint32
 	if p.class != nil {
-		ids = p.class.SkillIDs
+		ids = append(ids, p.class.SkillIDs...)
+		if sp := p.class.Spec(p.prog.Spec); sp != nil {
+			if s := z.content.SkillByKey(sp.Skill); s != nil {
+				ids = append(ids, s.ID)
+			}
+		}
 	} else {
 		for id := range z.content.Skills {
 			ids = append(ids, id)
@@ -118,7 +120,7 @@ func (z *Zone) useSkill(p *player, req *pb.UseSkill) {
 		}})
 	}
 	sk, ok := z.content.Skills[req.SkillId]
-	if !ok || !p.hasSkill(sk.ID) {
+	if !ok || !z.hasSkill(p, sk.ID) {
 		reject("unknown_skill")
 		return
 	}
@@ -187,7 +189,7 @@ func (z *Zone) useSkill(p *player, req *pb.UseSkill) {
 	p.cooldowns[sk.ID] = tick + z.ticks(sk.CooldownMS)
 	p.resource = max(0, p.resource-float64(sk.Cost))
 	if c.hits > 0 && sk.Gain > 0 && p.class != nil {
-		p.resource = min(float64(p.class.Resource.Max), p.resource+float64(sk.Gain))
+		p.resource = min(z.resourceMax(p), p.resource+float64(sk.Gain)*specMod(p.class, &p.prog, "resource_gain"))
 	}
 }
 
@@ -295,7 +297,11 @@ func (z *Zone) tickEffects(tick uint32) {
 				src = e
 			}
 			if ef.dot > 0 {
+				if s := z.content.Skills[ef.skill]; s != nil {
+					z.hitDiscipline = s.Discipline
+				}
 				z.damage(src, e, ef.skill, ef.dot, false)
+				z.hitDiscipline = ""
 			} else {
 				z.heal(src, e, ef.skill, int(math.Round(-ef.dot)))
 			}
@@ -312,11 +318,11 @@ func (z *Zone) updateResources(tick uint32) {
 			continue
 		}
 		res := r.Resource
-		p.resource += res.RegenPerS * dt
+		p.resource += res.RegenPerS * (1 + z.attrValue(&p.prog, "focus")) * dt
 		if res.DecayPerS > 0 && tick-p.combatTick > z.ticks(5000) {
 			p.resource -= res.DecayPerS * dt
 		}
-		p.resource = max(0, min(float64(res.Max), p.resource))
+		p.resource = max(0, min(z.resourceMax(p), p.resource))
 	}
 }
 
@@ -376,7 +382,14 @@ func (c *cast) Damage(id uint32, amount float64) int {
 		return 0
 	}
 	before := t.hp
-	c.z.damage(c.p.e, t, c.skill.ID, amount*rules.DamageMultiplier(c.p.e.level)*c.mult, c.critical)
+	mult := c.mult * c.z.damageMult(c.p, c.skill.Discipline)
+	crit := c.critical
+	if !crit && c.z.rollCrit(c.p) {
+		mult, crit = mult*critMult, true
+	}
+	c.z.hitDiscipline = c.skill.Discipline
+	c.z.damage(c.p.e, t, c.skill.ID, amount*rules.DamageMultiplier(c.p.e.level)*mult, crit)
+	c.z.hitDiscipline = ""
 	c.hits++
 	return before - t.hp
 }
@@ -386,7 +399,7 @@ func (c *cast) Heal(id uint32, amount float64) int {
 	if !ok || t.player == nil {
 		return 0
 	}
-	return c.z.heal(c.p.e, t, c.skill.ID, int(math.Round(amount)))
+	return c.z.heal(c.p.e, t, c.skill.ID, int(math.Round(amount*c.z.healPower(c.p))))
 }
 
 func (c *cast) Effect(id uint32, name string, durationS, value float64) bool {

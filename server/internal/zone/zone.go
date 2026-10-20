@@ -145,6 +145,8 @@ type inputMsg struct {
 	id    uint32
 	move  *pb.MoveInput
 	skill *pb.UseSkill
+	raise string // attribute key
+	spec  string // specialization key
 }
 
 type Zone struct {
@@ -174,7 +176,9 @@ type Zone struct {
 	pendingHits []pendingHit
 	// Flags for the damage event being produced right now.
 	weaponHit, flourishHit, blockedHit bool
-	nav                                *nav.Grid // nil on flat zones
+	// Discipline credited for the damage being dealt right now.
+	hitDiscipline string
+	nav           *nav.Grid // nil on flat zones
 	// Mixed into every player's fate entropy so rolls cannot be predicted
 	// from inputs alone.
 	fateSecret uint64
@@ -283,6 +287,21 @@ func (h *Handle) UseSkill(req *pb.UseSkill) {
 	}
 }
 
+// RaiseAttribute and ChooseSpec queue build changes. Never block.
+func (h *Handle) RaiseAttribute(key string) {
+	select {
+	case h.z.inputs <- inputMsg{id: h.id, raise: key}:
+	default:
+	}
+}
+
+func (h *Handle) ChooseSpec(key string) {
+	select {
+	case h.z.inputs <- inputMsg{id: h.id, spec: key}:
+	default:
+	}
+}
+
 // Leave removes the player. Safe to call more than once.
 func (h *Handle) Leave() {
 	select {
@@ -364,9 +383,8 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		hp:    c.HP,
 		maxHP: rules.MaxHP(level),
 	}
-	if class != nil {
-		e.maxHP = class.MaxHP(level)
-	}
+	prog := cloneProgression(c.Progression)
+	e.maxHP = z.maxHPFor(class, &prog, level)
 	if c.ZoneID != z.cfg.ID || !z.inBounds(e.pos) || !z.standable(e.pos) {
 		e.pos = z.spawnPoint()
 	}
@@ -393,6 +411,7 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		karma:     c.Karma,
 		inventory: maps.Clone(c.Inventory),
 		class:     class,
+		prog:      prog,
 	}
 	if class != nil {
 		p.resource = float64(class.Resource.Start)
@@ -424,6 +443,7 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		CharacterName: c.Name,
 		Inventory:     z.inventoryList(p),
 	}}})
+	z.sendProgression(p)
 	z.log.Info("player joined", "entity", e.id, "name", e.name, "character", c.ID, "players", len(z.players))
 	return &Handle{z: z, id: e.id}, nil
 }
@@ -454,8 +474,9 @@ func (z *Zone) record(p *player) model.Character {
 		HP:        p.e.hp,
 		Luck:      p.luck,
 		Karma:     p.karma,
-		// Copied: the saver reads it on another goroutine.
-		Inventory: maps.Clone(p.inventory),
+		// Copied: the saver reads them on another goroutine.
+		Inventory:   maps.Clone(p.inventory),
+		Progression: cloneProgression(p.prog),
 	}
 }
 
@@ -479,6 +500,10 @@ func (z *Zone) handleInput(m inputMsg) {
 		}
 	case m.skill != nil:
 		z.useSkill(p, m.skill)
+	case m.raise != "":
+		z.raiseAttribute(p, m.raise)
+	case m.spec != "":
+		z.chooseSpec(p, m.spec)
 	}
 }
 
@@ -499,6 +524,7 @@ func (z *Zone) step() {
 	z.tickEffects(tick)
 	z.updateLife(tick)
 	z.updateFate(tick)
+	z.updateProgression(tick)
 	z.replicate(tick)
 	z.autosave(tick)
 }

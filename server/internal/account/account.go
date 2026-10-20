@@ -80,12 +80,12 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 	return id, nil
 }
 
-const characterColumns = `id, account_id, name, model, class, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp, luck, karma, inventory`
+const characterColumns = `id, account_id, name, model, class, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp, luck, karma, inventory, progression`
 
 func scanCharacter(row pgx.Row) (model.Character, error) {
 	var c model.Character
 	err := row.Scan(&c.ID, &c.AccountID, &c.Name, &c.Model, &c.Class, &c.ZoneID,
-		&c.Pos[0], &c.Pos[1], &c.Pos[2], &c.Yaw, &c.Level, &c.Exp, &c.HP, &c.Luck, &c.Karma, &c.Inventory)
+		&c.Pos[0], &c.Pos[1], &c.Pos[2], &c.Yaw, &c.Level, &c.Exp, &c.HP, &c.Luck, &c.Karma, &c.Inventory, &c.Progression)
 	return c, err
 }
 
@@ -165,9 +165,9 @@ func (s *Service) SaveCharacters(ctx context.Context, chars []model.Character) e
 	for _, c := range chars {
 		batch.Queue(`UPDATE characters
 			SET zone_id = $2, pos_x = $3, pos_y = $4, pos_z = $5, yaw = $6, level = $7, exp = $8, hp = $9,
-			    karma = $10, inventory = $11, updated_at = now()
+			    karma = $10, inventory = $11, progression = $12, updated_at = now()
 			WHERE id = $1`,
-			c.ID, c.ZoneID, c.Pos[0], c.Pos[1], c.Pos[2], c.Yaw, c.Level, c.Exp, c.HP, c.Karma, inventoryJSON(c.Inventory))
+			c.ID, c.ZoneID, c.Pos[0], c.Pos[1], c.Pos[2], c.Yaw, c.Level, c.Exp, c.HP, c.Karma, inventoryJSON(c.Inventory), c.Progression)
 	}
 	return s.pool.SendBatch(ctx, batch).Close()
 }

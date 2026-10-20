@@ -214,6 +214,10 @@ func _ready() -> void:
 
 func set_skills(skills: Array) -> void:
 	var box: HBoxContainer = find_child("Skills", true, false)
+	for child in box.get_children():
+		child.queue_free()
+	_skill_buttons.clear()
+	_skill_names.clear()
 	for i in skills.size():
 		var s: PB.SkillInfo = skills[i]
 		var b := Button.new()

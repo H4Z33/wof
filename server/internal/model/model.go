@@ -20,4 +20,14 @@ type Character struct {
 	Karma int
 	// Item key -> quantity.
 	Inventory map[string]int
+	// Disciplines and build.
+	Progression Progression
+}
+
+// Progression is a character's build: unspent discipline experience,
+// attribute ranks and the chosen specialization.
+type Progression struct {
+	XP    map[string]int64 `json:"xp,omitempty"`
+	Ranks map[string]int   `json:"ranks,omitempty"`
+	Spec  string           `json:"spec,omitempty"`
 }

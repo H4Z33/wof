@@ -27,3 +27,14 @@ weapon:
   anim: Spell_Simple_Shoot
   flourish_anim: Spell_Simple_Shoot
   vfx: lance
+specializations:
+  - key: oracle
+    name: Oracle
+    description: The gods answer kindly. Much stronger healing and protection for allies.
+    modifiers: { heal_power: 1.3 }
+    skill: sanctuary
+  - key: warlock
+    name: Warlock
+    description: The gods answer in wrath. Spells hit harder and burn.
+    modifiers: { damage_dealt: 1.25 }
+    skill: soul_rend
