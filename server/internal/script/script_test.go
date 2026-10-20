@@ -13,19 +13,24 @@ type stubNPC struct {
 	target uint32
 }
 
-func (s *stubNPC) Position() (float64, float64)                  { return 0, 0 }
-func (s *stubNPC) Home() (float64, float64)                      { return 0, 0 }
-func (s *stubNPC) HP() (int, int)                                { return 10, 10 }
-func (s *stubNPC) Target() uint32                                { return s.target }
-func (s *stubNPC) SetTarget(id uint32)                           { s.target = id }
-func (s *stubNPC) NearestPlayer(float64) (uint32, float64, bool) { return 7, 3, true }
-func (s *stubNPC) DistanceTo(uint32) (float64, bool)             { return 3, true }
-func (s *stubNPC) MoveTo(x, z float64)                           { s.moves = append(s.moves, [2]float64{x, z}) }
-func (s *stubNPC) Chase(uint32, float64)                         {}
-func (s *stubNPC) Stop()                                         {}
-func (s *stubNPC) Attack(uint32) bool                            { return true }
-func (s *stubNPC) Stat(string) float64                           { return 1 }
-func (s *stubNPC) Reset()                                        {}
+func (s *stubNPC) Position() (float64, float64)                   { return 0, 0 }
+func (s *stubNPC) Home() (float64, float64)                       { return 0, 0 }
+func (s *stubNPC) HP() (int, int)                                 { return 10, 10 }
+func (s *stubNPC) Target() uint32                                 { return s.target }
+func (s *stubNPC) SetTarget(id uint32)                            { s.target = id }
+func (s *stubNPC) NearestPlayer(float64) (uint32, float64, bool)  { return 7, 3, true }
+func (s *stubNPC) DistanceTo(uint32) (float64, bool)              { return 3, true }
+func (s *stubNPC) MoveTo(x, z float64)                            { s.moves = append(s.moves, [2]float64{x, z}) }
+func (s *stubNPC) Chase(uint32, float64)                          {}
+func (s *stubNPC) Stop()                                          {}
+func (s *stubNPC) Attack(uint32) bool                             { return true }
+func (s *stubNPC) Stat(string) float64                            { return 1 }
+func (s *stubNPC) Reset()                                         {}
+func (s *stubNPC) PositionOf(uint32) (float64, float64, bool)     { return 0, 0, true }
+func (s *stubNPC) SelfEffect(string, float64, float64) bool       { return true }
+func (s *stubNPC) EffectOn(uint32, string, float64, float64) bool { return true }
+func (s *stubNPC) AttackArea(float64) bool                        { return true }
+func (s *stubNPC) CallAllies(float64) int                         { return 0 }
 
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
 

@@ -32,10 +32,15 @@ func (z *Zone) replicate(tick uint32) {
 				snap.Entities = append(snap.Entities, stateOf(e))
 				continue
 			}
-			snap.Spawns = append(snap.Spawns, &pb.EntitySpawn{
+			sp := &pb.EntitySpawn{
 				Id: id, Name: e.name, Model: e.model, State: stateOf(e), Kind: e.kind, Level: uint32(e.level),
 				ClassKey: classKeyOf(e),
-			})
+			}
+			if e.npc != nil {
+				a := e.npc.def.Attack
+				sp.AttackAnim, sp.AttackVfx, sp.AttackProjectile = a.Anim, a.VFX, a.Projectile
+			}
+			snap.Spawns = append(snap.Spawns, sp)
 			p.known[id] = true
 		}
 		for id := range p.known {

@@ -11,6 +11,26 @@ npc_groups:
     count: 4
     center: [-26, 16]
     radius: 6
+  # The bandit camp's leader.
+  - npc: rogue_elder
+    count: 1
+    center: [-28, 18]
+    radius: 1
+  # Guardians of an old shrine on the eastern terraces.
+  - npc: stone_guardian
+    count: 2
+    center: [36, 24]
+    radius: 4
+  # Assassins lurking in the north-west.
+  - npc: shadow_assassin
+    count: 3
+    center: [-36, -26]
+    radius: 6
+  # Wisps drifting by the lake shore.
+  - npc: jade_wisp
+    count: 4
+    center: [12, 36]
+    radius: 6
 
 # Heightmap built by `go -C server run ./cmd/terraingen -zone jade_terraces`,
 # which writes it here and to client/assets/terrain. Re-run it after changing

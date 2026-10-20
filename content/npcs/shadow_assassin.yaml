@@ -1,0 +1,21 @@
+key: shadow_assassin
+name: Shadow Assassin
+model: shade
+level: 3
+hp: 55
+speed: 5.5
+exp: 45
+respawn_ms: 20000
+ai: ai/assassin.lua
+stats:
+  attack_range: 2.0
+  aggro_radius: 12
+  leash_radius: 30
+  wander_radius: 6
+  # assassin.lua: strike this many times, then dart away before striking again.
+  strikes_before_retreat: 2
+  retreat_distance: 7
+attack:
+  damage: [6, 9]
+  cooldown_ms: 1100
+  anim: Punch_Jab

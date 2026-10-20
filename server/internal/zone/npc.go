@@ -178,3 +178,59 @@ func (n *npc) Reset() {
 }
 
 var _ script.NPC = (*npc)(nil)
+
+func (n *npc) PositionOf(id uint32) (float64, float64, bool) {
+	t, ok := n.z.entities[id]
+	if !ok || !t.inWorld {
+		return 0, 0, false
+	}
+	return t.pos[0], t.pos[2], true
+}
+
+func (n *npc) SelfEffect(name string, durationS, value float64) bool {
+	return n.z.addSkillEffect(n.e, n.e, 0, name, durationS, value)
+}
+
+func (n *npc) EffectOn(id uint32, name string, durationS, value float64) bool {
+	t, ok := n.z.entities[id]
+	if !ok || !t.alive() {
+		return false
+	}
+	return n.z.addSkillEffect(n.e, t, 0, name, durationS, value)
+}
+
+func (n *npc) AttackArea(radius float64) bool {
+	z := n.z
+	tick := z.tick.Load()
+	if !n.e.alive() || tick < n.nextAttack || n.e.stunned(tick) {
+		return false
+	}
+	var hit []*entity
+	z.grid.around(n.e.pos, func(o *entity) {
+		if o.player != nil && o.alive() && hdist(o.pos, n.e.pos) <= radius {
+			hit = append(hit, o)
+		}
+	})
+	if len(hit) == 0 {
+		return false
+	}
+	n.nextAttack = tick + z.ticks(n.def.Attack.CooldownMS)
+	for _, t := range hit {
+		z.damage(n.e, t, 0, float64(roll(n.def.Attack.Damage)), false)
+	}
+	return true
+}
+
+func (n *npc) CallAllies(radius float64) int {
+	if n.target == 0 {
+		return 0
+	}
+	called := 0
+	n.z.grid.around(n.e.pos, func(o *entity) {
+		if o.npc != nil && o != n.e && o.alive() && o.npc.target == 0 && hdist(o.pos, n.e.pos) <= radius {
+			o.npc.target = n.target
+			called++
+		}
+	})
+	return called
+}

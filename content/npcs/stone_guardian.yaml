@@ -1,0 +1,22 @@
+key: stone_guardian
+name: Stone Guardian
+model: golem
+level: 4
+hp: 220
+speed: 2.2
+exp: 90
+respawn_ms: 30000
+ai: ai/brute.lua
+stats:
+  attack_range: 3.0
+  aggro_radius: 9
+  leash_radius: 22
+  wander_radius: 3
+  # brute.lua: slam everyone around every few attacks; enrage below this hp.
+  slam_radius: 4.5
+  slam_every: 3
+  enrage_below: 0.4
+attack:
+  damage: [14, 20]
+  cooldown_ms: 2800
+  anim: Punch_Cross

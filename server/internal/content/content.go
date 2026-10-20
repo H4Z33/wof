@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -93,6 +94,8 @@ type NPCAttack struct {
 	Damage     Range  `yaml:"damage"`
 	CooldownMS int    `yaml:"cooldown_ms"`
 	Anim       string `yaml:"anim"`
+	VFX        string `yaml:"vfx"`
+	Projectile bool   `yaml:"projectile"`
 }
 
 type NPC struct {
@@ -226,6 +229,8 @@ type Content struct {
 	NPCs   map[string]*NPC
 	Zones  map[string]*Zone
 	Items  map[string]*Item
+	// AILibs are shared Lua libraries (content/ai/lib/<name>.lua) by name.
+	AILibs map[string]string
 	// Classes by key; empty when content/classes is absent.
 	Classes map[string]*Class
 	// Fate is nil when content/fate.yaml is absent.
@@ -253,7 +258,7 @@ func (c *Content) Class(key string) *Class {
 // Load reads dir/skills.yaml, dir/npcs/*.yaml, dir/zones/*.yaml and the AI
 // scripts they reference.
 func Load(dir string) (*Content, error) {
-	c := &Content{Skills: map[uint32]*Skill{}, NPCs: map[string]*NPC{}, Zones: map[string]*Zone{}, Items: map[string]*Item{}, Classes: map[string]*Class{}}
+	c := &Content{Skills: map[uint32]*Skill{}, NPCs: map[string]*NPC{}, Zones: map[string]*Zone{}, Items: map[string]*Item{}, Classes: map[string]*Class{}, AILibs: map[string]string{}}
 
 	var skills struct {
 		Skills []*Skill `yaml:"skills"`
@@ -273,6 +278,15 @@ func Load(dir string) (*Content, error) {
 			s.ScriptSource = string(src)
 		}
 		c.Skills[s.ID] = s
+	}
+
+	libFiles, _ := filepath.Glob(filepath.Join(dir, "ai", "lib", "*.lua"))
+	for _, f := range libFiles {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+		c.AILibs[strings.TrimSuffix(filepath.Base(f), ".lua")] = string(src)
 	}
 
 	classFiles, _ := filepath.Glob(filepath.Join(dir, "classes", "*.yaml"))

@@ -26,18 +26,18 @@ type ProtocolVersion int32
 
 const (
 	ProtocolVersion_PROTOCOL_VERSION_UNSPECIFIED ProtocolVersion = 0
-	ProtocolVersion_PROTOCOL_VERSION_CURRENT     ProtocolVersion = 6
+	ProtocolVersion_PROTOCOL_VERSION_CURRENT     ProtocolVersion = 7
 )
 
 // Enum value maps for ProtocolVersion.
 var (
 	ProtocolVersion_name = map[int32]string{
 		0: "PROTOCOL_VERSION_UNSPECIFIED",
-		6: "PROTOCOL_VERSION_CURRENT",
+		7: "PROTOCOL_VERSION_CURRENT",
 	}
 	ProtocolVersion_value = map[string]int32{
 		"PROTOCOL_VERSION_UNSPECIFIED": 0,
-		"PROTOCOL_VERSION_CURRENT":     6,
+		"PROTOCOL_VERSION_CURRENT":     7,
 	}
 )
 
@@ -1557,9 +1557,13 @@ type EntitySpawn struct {
 	Kind  EntityKind   `protobuf:"varint,5,opt,name=kind,proto3,enum=convergence.v1.EntityKind" json:"kind,omitempty"`
 	Level uint32       `protobuf:"varint,6,opt,name=level,proto3" json:"level,omitempty"`
 	// Players: their class key.
-	ClassKey      string `protobuf:"bytes,7,opt,name=class_key,json=classKey,proto3" json:"class_key,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	ClassKey string `protobuf:"bytes,7,opt,name=class_key,json=classKey,proto3" json:"class_key,omitempty"`
+	// NPCs: how their attack looks (animation, effect, flies to the target).
+	AttackAnim       string `protobuf:"bytes,8,opt,name=attack_anim,json=attackAnim,proto3" json:"attack_anim,omitempty"`
+	AttackVfx        string `protobuf:"bytes,9,opt,name=attack_vfx,json=attackVfx,proto3" json:"attack_vfx,omitempty"`
+	AttackProjectile bool   `protobuf:"varint,10,opt,name=attack_projectile,json=attackProjectile,proto3" json:"attack_projectile,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *EntitySpawn) Reset() {
@@ -1639,6 +1643,27 @@ func (x *EntitySpawn) GetClassKey() string {
 		return x.ClassKey
 	}
 	return ""
+}
+
+func (x *EntitySpawn) GetAttackAnim() string {
+	if x != nil {
+		return x.AttackAnim
+	}
+	return ""
+}
+
+func (x *EntitySpawn) GetAttackVfx() string {
+	if x != nil {
+		return x.AttackVfx
+	}
+	return ""
+}
+
+func (x *EntitySpawn) GetAttackProjectile() bool {
+	if x != nil {
+		return x.AttackProjectile
+	}
+	return false
 }
 
 type CombatEvent struct {
@@ -2206,7 +2231,7 @@ const file_convergence_v1_world_proto_rawDesc = "" +
 	"\x06moving\x18\x04 \x01(\bR\x06moving\x12\x0e\n" +
 	"\x02hp\x18\x05 \x01(\rR\x02hp\x12\x15\n" +
 	"\x06max_hp\x18\x06 \x01(\rR\x05maxHp\x12\x18\n" +
-	"\aeffects\x18\a \x01(\rR\aeffects\"\xdd\x01\n" +
+	"\aeffects\x18\a \x01(\rR\aeffects\"\xca\x02\n" +
 	"\vEntitySpawn\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -2214,7 +2239,13 @@ const file_convergence_v1_world_proto_rawDesc = "" +
 	"\x05state\x18\x04 \x01(\v2\x1b.convergence.v1.EntityStateR\x05state\x12.\n" +
 	"\x04kind\x18\x05 \x01(\x0e2\x1a.convergence.v1.EntityKindR\x04kind\x12\x14\n" +
 	"\x05level\x18\x06 \x01(\rR\x05level\x12\x1b\n" +
-	"\tclass_key\x18\a \x01(\tR\bclassKey\"\xcb\x01\n" +
+	"\tclass_key\x18\a \x01(\tR\bclassKey\x12\x1f\n" +
+	"\vattack_anim\x18\b \x01(\tR\n" +
+	"attackAnim\x12\x1d\n" +
+	"\n" +
+	"attack_vfx\x18\t \x01(\tR\tattackVfx\x12+\n" +
+	"\x11attack_projectile\x18\n" +
+	" \x01(\bR\x10attackProjectile\"\xcb\x01\n" +
 	"\vCombatEvent\x123\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1f.convergence.v1.CombatEventKindR\x04kind\x12\x1b\n" +
 	"\tsource_id\x18\x02 \x01(\rR\bsourceId\x12\x1b\n" +
@@ -2253,7 +2284,7 @@ const file_convergence_v1_world_proto_rawDesc = "" +
 	"\amessage\x18\x02 \x01(\tR\amessage*Q\n" +
 	"\x0fProtocolVersion\x12 \n" +
 	"\x1cPROTOCOL_VERSION_UNSPECIFIED\x10\x00\x12\x1c\n" +
-	"\x18PROTOCOL_VERSION_CURRENT\x10\x06*V\n" +
+	"\x18PROTOCOL_VERSION_CURRENT\x10\a*V\n" +
 	"\bFateOmen\x12\x19\n" +
 	"\x15FATE_OMEN_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11FATE_OMEN_FORTUNE\x10\x01\x12\x18\n" +

@@ -7,7 +7,7 @@ option go_package = "convergence/server/gen/convergence/v1;convergencev1";
 // Bump when a change breaks older clients. The server rejects mismatches in Hello.
 enum ProtocolVersion {
   PROTOCOL_VERSION_UNSPECIFIED = 0;
-  PROTOCOL_VERSION_CURRENT = 6;
+  PROTOCOL_VERSION_CURRENT = 7;
 }
 
 enum FateOmen {
@@ -219,6 +219,10 @@ message EntitySpawn {
   uint32 level = 6;
   // Players: their class key.
   string class_key = 7;
+  // NPCs: how their attack looks (animation, effect, flies to the target).
+  string attack_anim = 8;
+  string attack_vfx = 9;
+  bool attack_projectile = 10;
 }
 
 message CombatEvent {

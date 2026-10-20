@@ -191,7 +191,7 @@ class _Reader:
 
 enum ProtocolVersion {
 	PROTOCOL_VERSION_UNSPECIFIED = 0,
-	PROTOCOL_VERSION_CURRENT = 6,
+	PROTOCOL_VERSION_CURRENT = 7,
 }
 
 enum FateOmen {
@@ -1262,6 +1262,9 @@ class EntitySpawn:
 	var kind: int = 0
 	var level: int = 0
 	var class_key: String = ""
+	var attack_anim: String = ""
+	var attack_vfx: String = ""
+	var attack_projectile: bool = false
 
 	func _write(w: _Writer) -> void:
 		if id != 0:
@@ -1284,6 +1287,15 @@ class EntitySpawn:
 		if not class_key.is_empty():
 			w.tag(7, 2)
 			w.string(class_key)
+		if not attack_anim.is_empty():
+			w.tag(8, 2)
+			w.string(attack_anim)
+		if not attack_vfx.is_empty():
+			w.tag(9, 2)
+			w.string(attack_vfx)
+		if attack_projectile != false:
+			w.tag(10, 0)
+			w.boolean(attack_projectile)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -1316,6 +1328,15 @@ class EntitySpawn:
 					else: r.skip(wt)
 				7:
 					if wt == 2: class_key = r.string()
+					else: r.skip(wt)
+				8:
+					if wt == 2: attack_anim = r.string()
+					else: r.skip(wt)
+				9:
+					if wt == 2: attack_vfx = r.string()
+					else: r.skip(wt)
+				10:
+					if wt == 0: attack_projectile = r.boolean()
 					else: r.skip(wt)
 				_:
 					r.skip(wt)

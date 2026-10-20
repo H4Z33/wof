@@ -1,0 +1,23 @@
+key: jade_wisp
+name: Jade Wisp
+model: wisp
+level: 3
+hp: 40
+speed: 3.2
+exp: 40
+respawn_ms: 18000
+ai: ai/ranged.lua
+stats:
+  attack_range: 12
+  aggro_radius: 13
+  leash_radius: 25
+  wander_radius: 5
+  # ranged.lua: back away when a foe gets closer than this.
+  keep_away: 6
+attack:
+  damage: [5, 8]
+  cooldown_ms: 2000
+  anim: Spell_Simple_Shoot
+  # Ranged attacks fly to the target on the client.
+  vfx: wisp_bolt
+  projectile: true

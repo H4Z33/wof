@@ -36,6 +36,15 @@ type NPC interface {
 	Stat(name string) float64
 	// Reset heals fully and clears the target (used after leashing).
 	Reset()
+	// PositionOf fails if the entity is gone.
+	PositionOf(id uint32) (x, z float64, ok bool)
+	// SelfEffect / EffectOn apply a timed effect (see content.SkillEffects).
+	SelfEffect(name string, durationS, value float64) bool
+	EffectOn(id uint32, name string, durationS, value float64) bool
+	// AttackArea hits every player within radius (uses the attack cooldown).
+	AttackArea(radius float64) bool
+	// CallAllies makes idle NPCs within radius join the NPC's fight.
+	CallAllies(radius float64) int
 }
 
 const npcType = "npc"
@@ -44,7 +53,28 @@ type Engine struct {
 	L       *lua.LState
 	log     *slog.Logger
 	modules map[string]*lua.LTable
+	libs    map[string]*lua.LTable // shared code for scripts, via lib(name)
 	cancel  context.CancelFunc
+}
+
+// LoadLib compiles a shared library that scripts get with lib(name). Load
+// libraries before the scripts that use them.
+func (e *Engine) LoadLib(name, source string) error {
+	fn, err := e.L.Load(strings.NewReader(source), "lib/"+name)
+	if err != nil {
+		return fmt.Errorf("lib %s: %w", name, err)
+	}
+	e.L.Push(fn)
+	if err := e.L.PCall(0, 1, nil); err != nil {
+		return fmt.Errorf("lib %s: %w", name, err)
+	}
+	t, ok := e.L.Get(-1).(*lua.LTable)
+	e.L.Pop(1)
+	if !ok {
+		return fmt.Errorf("lib %s: must return a table", name)
+	}
+	e.libs[name] = t
+	return nil
 }
 
 func New(log *slog.Logger) *Engine {
@@ -65,7 +95,16 @@ func New(log *slog.Logger) *Engine {
 	for _, name := range []string{"dofile", "loadfile", "load", "loadstring", "require", "module", "getfenv", "setfenv", "collectgarbage"} {
 		L.SetGlobal(name, lua.LNil)
 	}
-	e := &Engine{L: L, log: log.With("component", "lua"), modules: map[string]*lua.LTable{}}
+	e := &Engine{L: L, log: log.With("component", "lua"), modules: map[string]*lua.LTable{}, libs: map[string]*lua.LTable{}}
+	L.SetGlobal("lib", L.NewFunction(func(L *lua.LState) int {
+		name := L.CheckString(1)
+		t, ok := e.libs[name]
+		if !ok {
+			L.RaiseError("unknown library %q", name)
+		}
+		L.Push(t)
+		return 1
+	}))
 	L.SetGlobal("print", L.NewFunction(func(L *lua.LState) int {
 		parts := make([]string, L.GetTop())
 		for i := range parts {
@@ -257,5 +296,33 @@ var npcMethods = map[string]lua.LGFunction{
 	"reset": func(L *lua.LState) int {
 		check(L).Reset()
 		return 0
+	},
+	"position_of": func(L *lua.LState) int {
+		x, z, ok := check(L).PositionOf(optID(L, 2))
+		if !ok {
+			L.Push(lua.LNil)
+			return 1
+		}
+		L.Push(lua.LNumber(x))
+		L.Push(lua.LNumber(z))
+		return 2
+	},
+	"self_effect": func(L *lua.LState) int {
+		n := check(L)
+		L.Push(lua.LBool(n.SelfEffect(L.CheckString(2), float64(L.CheckNumber(3)), float64(L.OptNumber(4, 1)))))
+		return 1
+	},
+	"effect_on": func(L *lua.LState) int {
+		n := check(L)
+		L.Push(lua.LBool(n.EffectOn(optID(L, 2), L.CheckString(3), float64(L.CheckNumber(4)), float64(L.OptNumber(5, 1)))))
+		return 1
+	},
+	"attack_area": func(L *lua.LState) int {
+		L.Push(lua.LBool(check(L).AttackArea(float64(L.CheckNumber(2)))))
+		return 1
+	},
+	"call_allies": func(L *lua.LState) int {
+		L.Push(lua.LNumber(check(L).CallAllies(float64(L.CheckNumber(2)))))
+		return 1
 	},
 }

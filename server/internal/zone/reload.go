@@ -46,6 +46,9 @@ func (z *Zone) applyReload(c *content.Content) {
 }
 
 func (z *Zone) reloadScripts() error {
+	if err := z.loadLibs(); err != nil {
+		return err
+	}
 	for _, def := range z.content.NPCs {
 		if !z.aiLoaded[def.AI] {
 			continue // loaded lazily when first used

@@ -22,7 +22,21 @@ var effectFlags = map[string]pb.EffectFlag{
 	"slowed":   pb.EffectFlag_EFFECT_FLAG_SLOWED,
 }
 
+// loadLibs compiles the shared Lua libraries; they must exist before the
+// scripts that call lib(name) at load time.
+func (z *Zone) loadLibs() error {
+	for name, src := range z.content.AILibs {
+		if err := z.lua.LoadLib(name, src); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (z *Zone) loadSkillScripts() error {
+	if err := z.loadLibs(); err != nil {
+		return err
+	}
 	for _, s := range z.content.Skills {
 		if s.Script != "" {
 			if err := z.lua.LoadSkill(s.Script, s.ScriptSource); err != nil {
