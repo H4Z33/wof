@@ -1,0 +1,31 @@
+# Renown and titles. Renown grows with deeds; titles unlock with renown
+# (some also need your karma to lean one way) and one of them can be shown
+# under your name.
+
+renown:
+  # Per level of each enemy defeated.
+  kill_per_level: 2
+  # When Fate smiles on you.
+  fate_fortune: 3
+
+titles:
+  - key: wanderer
+    name: the Wanderer
+    renown: 0
+  - key: of_note
+    name: Cultivator of Note
+    renown: 60
+  - key: bandit_bane
+    name: the Bandit Bane
+    renown: 150
+  - key: hero
+    name: Hero of the Terraces
+    renown: 300
+    min_karma: 30
+  - key: dreaded
+    name: the Dreaded
+    renown: 300
+    max_karma: -30
+  - key: legend
+    name: the Living Legend
+    renown: 1000

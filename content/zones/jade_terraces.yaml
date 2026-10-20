@@ -31,6 +31,15 @@ npc_groups:
     count: 4
     center: [12, 36]
     radius: 6
+  # The village around the spawn plaza.
+  - npc: elder_mei
+    count: 1
+    center: [3, 5]
+    radius: 0
+  - npc: villager
+    count: 6
+    center: [0, 0]
+    radius: 9
 
 # Heightmap built by `go -C server run ./cmd/terraingen -zone jade_terraces`,
 # which writes it here and to client/assets/terrain. Re-run it after changing
@@ -54,3 +63,16 @@ terrain:
     - center: [-14, 34]
       radius: 13
       depth: -3.5
+
+# Village decor around the spawn plaza (drawn by the client; you can walk
+# through them for now).
+props:
+  - { kind: house, at: [-12, 5], yaw: 70 }
+  - { kind: house, at: [-8, -11], yaw: 20 }
+  - { kind: house, at: [9, -12], yaw: -25 }
+  - { kind: house, at: [13, 4], yaw: -80 }
+  - { kind: house, at: [6, 12], yaw: 190 }
+  - { kind: lantern, at: [4, 3] }
+  - { kind: lantern, at: [-4, 4] }
+  - { kind: lantern, at: [-3, -5] }
+  - { kind: lantern, at: [5, -4] }

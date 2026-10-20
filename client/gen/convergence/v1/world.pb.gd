@@ -191,7 +191,7 @@ class _Reader:
 
 enum ProtocolVersion {
 	PROTOCOL_VERSION_UNSPECIFIED = 0,
-	PROTOCOL_VERSION_CURRENT = 9,
+	PROTOCOL_VERSION_CURRENT = 11,
 }
 
 enum FateOmen {
@@ -236,6 +236,8 @@ enum ActionState {
 	ACTION_STATE_ROLL = 5,
 	ACTION_STATE_WINDUP = 6,
 	ACTION_STATE_SLAM_WINDUP = 7,
+	ACTION_STATE_CHEER = 8,
+	ACTION_STATE_COWER = 9,
 }
 
 enum CombatEventKind {
@@ -302,6 +304,9 @@ class ClientMessage:
 	var use_skill: UseSkill = null
 	var raise_attribute: RaiseAttribute = null
 	var choose_spec: ChooseSpec = null
+	var choose_title: ChooseTitle = null
+	var interact: Interact = null
+	var quest_action: QuestAction = null
 
 	func which_payload() -> String:
 		if hello != null: return "hello"
@@ -310,6 +315,9 @@ class ClientMessage:
 		if use_skill != null: return "use_skill"
 		if raise_attribute != null: return "raise_attribute"
 		if choose_spec != null: return "choose_spec"
+		if choose_title != null: return "choose_title"
+		if interact != null: return "interact"
+		if quest_action != null: return "quest_action"
 		return ""
 
 	func _write(w: _Writer) -> void:
@@ -325,6 +333,12 @@ class ClientMessage:
 			w.message(14, raise_attribute)
 		if choose_spec != null:
 			w.message(15, choose_spec)
+		if choose_title != null:
+			w.message(16, choose_title)
+		if interact != null:
+			w.message(17, interact)
+		if quest_action != null:
+			w.message(18, quest_action)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -344,6 +358,9 @@ class ClientMessage:
 						use_skill = null
 						raise_attribute = null
 						choose_spec = null
+						choose_title = null
+						interact = null
+						quest_action = null
 						hello = v
 				11:
 					if wt != 2:
@@ -358,6 +375,9 @@ class ClientMessage:
 						use_skill = null
 						raise_attribute = null
 						choose_spec = null
+						choose_title = null
+						interact = null
+						quest_action = null
 						move = v
 				12:
 					if wt != 2:
@@ -372,6 +392,9 @@ class ClientMessage:
 						use_skill = null
 						raise_attribute = null
 						choose_spec = null
+						choose_title = null
+						interact = null
+						quest_action = null
 						ping = v
 				13:
 					if wt != 2:
@@ -386,6 +409,9 @@ class ClientMessage:
 						ping = null
 						raise_attribute = null
 						choose_spec = null
+						choose_title = null
+						interact = null
+						quest_action = null
 						use_skill = v
 				14:
 					if wt != 2:
@@ -400,6 +426,9 @@ class ClientMessage:
 						ping = null
 						use_skill = null
 						choose_spec = null
+						choose_title = null
+						interact = null
+						quest_action = null
 						raise_attribute = v
 				15:
 					if wt != 2:
@@ -414,7 +443,61 @@ class ClientMessage:
 						ping = null
 						use_skill = null
 						raise_attribute = null
+						choose_title = null
+						interact = null
+						quest_action = null
 						choose_spec = v
+				16:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := ChooseTitle.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						hello = null
+						move = null
+						ping = null
+						use_skill = null
+						raise_attribute = null
+						choose_spec = null
+						interact = null
+						quest_action = null
+						choose_title = v
+				17:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := Interact.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						hello = null
+						move = null
+						ping = null
+						use_skill = null
+						raise_attribute = null
+						choose_spec = null
+						choose_title = null
+						quest_action = null
+						interact = v
+				18:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := QuestAction.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						hello = null
+						move = null
+						ping = null
+						use_skill = null
+						raise_attribute = null
+						choose_spec = null
+						choose_title = null
+						interact = null
+						quest_action = v
 				_:
 					r.skip(wt)
 
@@ -426,6 +509,123 @@ class ClientMessage:
 	# Returns null if the bytes are malformed.
 	static func from_bytes(b: PackedByteArray) -> ClientMessage:
 		var m := ClientMessage.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class Interact:
+	extends RefCounted
+	var npc_id: int = 0
+
+	func _write(w: _Writer) -> void:
+		if npc_id != 0:
+			w.tag(1, 0)
+			w.varint(npc_id)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 0: npc_id = r.uint32()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> Interact:
+		var m := Interact.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class QuestAction:
+	extends RefCounted
+	var quest: String = ""
+	var action: String = ""
+	var choice: String = ""
+	var npc_id: int = 0
+
+	func _write(w: _Writer) -> void:
+		if not quest.is_empty():
+			w.tag(1, 2)
+			w.string(quest)
+		if not action.is_empty():
+			w.tag(2, 2)
+			w.string(action)
+		if not choice.is_empty():
+			w.tag(3, 2)
+			w.string(choice)
+		if npc_id != 0:
+			w.tag(4, 0)
+			w.varint(npc_id)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: quest = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 2: action = r.string()
+					else: r.skip(wt)
+				3:
+					if wt == 2: choice = r.string()
+					else: r.skip(wt)
+				4:
+					if wt == 0: npc_id = r.uint32()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> QuestAction:
+		var m := QuestAction.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class ChooseTitle:
+	extends RefCounted
+	var key: String = ""
+
+	func _write(w: _Writer) -> void:
+		if not key.is_empty():
+			w.tag(1, 2)
+			w.string(key)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: key = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> ChooseTitle:
+		var m := ChooseTitle.new()
 		var r := _Reader.new(b, 0, b.size())
 		m._read(r)
 		return null if r.failed else m
@@ -680,6 +880,8 @@ class ServerMessage:
 	var skill_rejected: SkillRejected = null
 	var fate: FateEvent = null
 	var progression: Progression = null
+	var quest_dialog: QuestDialog = null
+	var quest_log: QuestLog = null
 
 	func which_payload() -> String:
 		if welcome != null: return "welcome"
@@ -689,6 +891,8 @@ class ServerMessage:
 		if skill_rejected != null: return "skill_rejected"
 		if fate != null: return "fate"
 		if progression != null: return "progression"
+		if quest_dialog != null: return "quest_dialog"
+		if quest_log != null: return "quest_log"
 		return ""
 
 	func _write(w: _Writer) -> void:
@@ -706,6 +910,10 @@ class ServerMessage:
 			w.message(15, fate)
 		if progression != null:
 			w.message(16, progression)
+		if quest_dialog != null:
+			w.message(17, quest_dialog)
+		if quest_log != null:
+			w.message(18, quest_log)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -726,6 +934,8 @@ class ServerMessage:
 						skill_rejected = null
 						fate = null
 						progression = null
+						quest_dialog = null
+						quest_log = null
 						welcome = v
 				11:
 					if wt != 2:
@@ -741,6 +951,8 @@ class ServerMessage:
 						skill_rejected = null
 						fate = null
 						progression = null
+						quest_dialog = null
+						quest_log = null
 						snapshot = v
 				12:
 					if wt != 2:
@@ -756,6 +968,8 @@ class ServerMessage:
 						skill_rejected = null
 						fate = null
 						progression = null
+						quest_dialog = null
+						quest_log = null
 						pong = v
 				13:
 					if wt != 2:
@@ -771,6 +985,8 @@ class ServerMessage:
 						skill_rejected = null
 						fate = null
 						progression = null
+						quest_dialog = null
+						quest_log = null
 						error = v
 				14:
 					if wt != 2:
@@ -786,6 +1002,8 @@ class ServerMessage:
 						error = null
 						fate = null
 						progression = null
+						quest_dialog = null
+						quest_log = null
 						skill_rejected = v
 				15:
 					if wt != 2:
@@ -801,6 +1019,8 @@ class ServerMessage:
 						error = null
 						skill_rejected = null
 						progression = null
+						quest_dialog = null
+						quest_log = null
 						fate = v
 				16:
 					if wt != 2:
@@ -816,7 +1036,43 @@ class ServerMessage:
 						error = null
 						skill_rejected = null
 						fate = null
+						quest_dialog = null
+						quest_log = null
 						progression = v
+				17:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := QuestDialog.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						welcome = null
+						snapshot = null
+						pong = null
+						error = null
+						skill_rejected = null
+						fate = null
+						progression = null
+						quest_log = null
+						quest_dialog = v
+				18:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := QuestLog.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						welcome = null
+						snapshot = null
+						pong = null
+						error = null
+						skill_rejected = null
+						fate = null
+						progression = null
+						quest_dialog = null
+						quest_log = v
 				_:
 					r.skip(wt)
 
@@ -832,6 +1088,347 @@ class ServerMessage:
 		m._read(r)
 		return null if r.failed else m
 
+class QuestDialog:
+	extends RefCounted
+	var npc_id: int = 0
+	var npc_name: String = ""
+	var greeting: String = ""
+	var offers: Array[QuestInfo] = []
+	var ready: Array[QuestInfo] = []
+	var reply: String = ""
+
+	func _write(w: _Writer) -> void:
+		if npc_id != 0:
+			w.tag(1, 0)
+			w.varint(npc_id)
+		if not npc_name.is_empty():
+			w.tag(2, 2)
+			w.string(npc_name)
+		if not greeting.is_empty():
+			w.tag(3, 2)
+			w.string(greeting)
+		for v in offers:
+			w.message(4, v)
+		for v in ready:
+			w.message(5, v)
+		if not reply.is_empty():
+			w.tag(6, 2)
+			w.string(reply)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 0: npc_id = r.uint32()
+					else: r.skip(wt)
+				2:
+					if wt == 2: npc_name = r.string()
+					else: r.skip(wt)
+				3:
+					if wt == 2: greeting = r.string()
+					else: r.skip(wt)
+				4:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := QuestInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						offers.append(v)
+				5:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := QuestInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						ready.append(v)
+				6:
+					if wt == 2: reply = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> QuestDialog:
+		var m := QuestDialog.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class QuestInfo:
+	extends RefCounted
+	var key: String = ""
+	var name: String = ""
+	var summary: String = ""
+	var text: String = ""
+	var choices: Array[QuestChoiceInfo] = []
+	var objectives: Array[QuestObjectiveInfo] = []
+	var state: String = ""
+	var giver: String = ""
+
+	func _write(w: _Writer) -> void:
+		if not key.is_empty():
+			w.tag(1, 2)
+			w.string(key)
+		if not name.is_empty():
+			w.tag(2, 2)
+			w.string(name)
+		if not summary.is_empty():
+			w.tag(3, 2)
+			w.string(summary)
+		if not text.is_empty():
+			w.tag(4, 2)
+			w.string(text)
+		for v in choices:
+			w.message(5, v)
+		for v in objectives:
+			w.message(6, v)
+		if not state.is_empty():
+			w.tag(7, 2)
+			w.string(state)
+		if not giver.is_empty():
+			w.tag(8, 2)
+			w.string(giver)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: key = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 2: name = r.string()
+					else: r.skip(wt)
+				3:
+					if wt == 2: summary = r.string()
+					else: r.skip(wt)
+				4:
+					if wt == 2: text = r.string()
+					else: r.skip(wt)
+				5:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := QuestChoiceInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						choices.append(v)
+				6:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := QuestObjectiveInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						objectives.append(v)
+				7:
+					if wt == 2: state = r.string()
+					else: r.skip(wt)
+				8:
+					if wt == 2: giver = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> QuestInfo:
+		var m := QuestInfo.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class QuestChoiceInfo:
+	extends RefCounted
+	var key: String = ""
+	var text: String = ""
+
+	func _write(w: _Writer) -> void:
+		if not key.is_empty():
+			w.tag(1, 2)
+			w.string(key)
+		if not text.is_empty():
+			w.tag(2, 2)
+			w.string(text)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: key = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 2: text = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> QuestChoiceInfo:
+		var m := QuestChoiceInfo.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class QuestObjectiveInfo:
+	extends RefCounted
+	var text: String = ""
+	var progress: int = 0
+	var target: int = 0
+
+	func _write(w: _Writer) -> void:
+		if not text.is_empty():
+			w.tag(1, 2)
+			w.string(text)
+		if progress != 0:
+			w.tag(2, 0)
+			w.varint(progress)
+		if target != 0:
+			w.tag(3, 0)
+			w.varint(target)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: text = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 0: progress = r.uint32()
+					else: r.skip(wt)
+				3:
+					if wt == 0: target = r.uint32()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> QuestObjectiveInfo:
+		var m := QuestObjectiveInfo.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class QuestLog:
+	extends RefCounted
+	var quests: Array[QuestInfo] = []
+	var inventory: Array[InventoryItem] = []
+
+	func _write(w: _Writer) -> void:
+		for v in quests:
+			w.message(1, v)
+		for v in inventory:
+			w.message(2, v)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := QuestInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						quests.append(v)
+				2:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := InventoryItem.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						inventory.append(v)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> QuestLog:
+		var m := QuestLog.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class Speech:
+	extends RefCounted
+	var entity_id: int = 0
+	var text: String = ""
+
+	func _write(w: _Writer) -> void:
+		if entity_id != 0:
+			w.tag(1, 0)
+			w.varint(entity_id)
+		if not text.is_empty():
+			w.tag(2, 2)
+			w.string(text)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 0: entity_id = r.uint32()
+					else: r.skip(wt)
+				2:
+					if wt == 2: text = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> Speech:
+		var m := Speech.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
 class Progression:
 	extends RefCounted
 	var disciplines: Array[DisciplineState] = []
@@ -841,6 +1438,8 @@ class Progression:
 	var spec_unlock_ranks: int = 0
 	var skills: Array[SkillInfo] = []
 	var move_speed: float = 0.0
+	var titles: Array[TitleInfo] = []
+	var title: String = ""
 
 	func _write(w: _Writer) -> void:
 		for v in disciplines:
@@ -860,6 +1459,11 @@ class Progression:
 		if move_speed != 0.0:
 			w.tag(7, 5)
 			w.f32(move_speed)
+		for v in titles:
+			w.message(8, v)
+		if not title.is_empty():
+			w.tag(9, 2)
+			w.string(title)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -911,6 +1515,18 @@ class Progression:
 				7:
 					if wt == 5: move_speed = r.f32()
 					else: r.skip(wt)
+				8:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := TitleInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						titles.append(v)
+				9:
+					if wt == 2: title = r.string()
+					else: r.skip(wt)
 				_:
 					r.skip(wt)
 
@@ -922,6 +1538,45 @@ class Progression:
 	# Returns null if the bytes are malformed.
 	static func from_bytes(b: PackedByteArray) -> Progression:
 		var m := Progression.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class TitleInfo:
+	extends RefCounted
+	var key: String = ""
+	var name: String = ""
+
+	func _write(w: _Writer) -> void:
+		if not key.is_empty():
+			w.tag(1, 2)
+			w.string(key)
+		if not name.is_empty():
+			w.tag(2, 2)
+			w.string(name)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: key = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 2: name = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> TitleInfo:
+		var m := TitleInfo.new()
 		var r := _Reader.new(b, 0, b.size())
 		m._read(r)
 		return null if r.failed else m
@@ -1727,6 +2382,7 @@ class PlayerStatus:
 	var resource_max: int = 0
 	var multiplier: float = 0.0
 	var combo: int = 0
+	var renown: int = 0
 
 	func _write(w: _Writer) -> void:
 		if level != 0:
@@ -1765,6 +2421,9 @@ class PlayerStatus:
 		if combo != 0:
 			w.tag(12, 0)
 			w.varint(combo)
+		if renown != 0:
+			w.tag(13, 0)
+			w.varint(renown)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -1807,6 +2466,9 @@ class PlayerStatus:
 				12:
 					if wt == 0: combo = r.uint32()
 					else: r.skip(wt)
+				13:
+					if wt == 0: renown = r.uint32()
+					else: r.skip(wt)
 				_:
 					r.skip(wt)
 
@@ -1833,6 +2495,7 @@ class EntityState:
 	var effects: int = 0
 	var action: int = 0
 	var action_tick: int = 0
+	var alignment: int = 0
 
 	func _write(w: _Writer) -> void:
 		if id != 0:
@@ -1861,6 +2524,9 @@ class EntityState:
 		if action_tick != 0:
 			w.tag(9, 0)
 			w.varint(action_tick)
+		if alignment != 0:
+			w.tag(10, 0)
+			w.zigzag(alignment)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -1900,6 +2566,9 @@ class EntityState:
 				9:
 					if wt == 0: action_tick = r.uint32()
 					else: r.skip(wt)
+				10:
+					if wt == 0: alignment = r.zigzag32()
+					else: r.skip(wt)
 				_:
 					r.skip(wt)
 
@@ -1927,6 +2596,9 @@ class EntitySpawn:
 	var attack_anim: String = ""
 	var attack_vfx: String = ""
 	var attack_projectile: bool = false
+	var title: String = ""
+	var friendly: bool = false
+	var quest_giver: bool = false
 
 	func _write(w: _Writer) -> void:
 		if id != 0:
@@ -1958,6 +2630,15 @@ class EntitySpawn:
 		if attack_projectile != false:
 			w.tag(10, 0)
 			w.boolean(attack_projectile)
+		if not title.is_empty():
+			w.tag(11, 2)
+			w.string(title)
+		if friendly != false:
+			w.tag(12, 0)
+			w.boolean(friendly)
+		if quest_giver != false:
+			w.tag(13, 0)
+			w.boolean(quest_giver)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -1999,6 +2680,15 @@ class EntitySpawn:
 					else: r.skip(wt)
 				10:
 					if wt == 0: attack_projectile = r.boolean()
+					else: r.skip(wt)
+				11:
+					if wt == 2: title = r.string()
+					else: r.skip(wt)
+				12:
+					if wt == 0: friendly = r.boolean()
+					else: r.skip(wt)
+				13:
+					if wt == 0: quest_giver = r.boolean()
 					else: r.skip(wt)
 				_:
 					r.skip(wt)
@@ -2105,6 +2795,7 @@ class Snapshot:
 	var despawns: Array[int] = []
 	var events: Array[CombatEvent] = []
 	var status: PlayerStatus = null
+	var speech: Array[Speech] = []
 
 	func _write(w: _Writer) -> void:
 		if tick != 0:
@@ -2128,6 +2819,8 @@ class Snapshot:
 			w.message(6, v)
 		if status != null:
 			w.message(7, status)
+		for v in speech:
+			w.message(8, v)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -2183,6 +2876,15 @@ class Snapshot:
 						v._read(sub)
 						if sub.failed: r.failed = true
 						status = v
+				8:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := Speech.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						speech.append(v)
 				_:
 					r.skip(wt)
 

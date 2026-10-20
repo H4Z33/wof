@@ -2,7 +2,16 @@
 
 Cultivation MMO prototype: Go server + Godot 4 client. Design: [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md).
 
-## Status: M2 (classes) and beyond
+## Status: M3 (Fable-style gameplay)
+
+- **Action combat**: left click attacks (hold for a charged *flourish*), right click blocks, Space rolls (brief invulnerability), F locks on. Enemy attacks are telegraphed and can be dodged or blocked. Hits are lag-compensated on the server; the client predicts the same action state machine.
+- **Combat multiplier**: hits in a row raise an experience multiplier up to x5; taking a hit resets it.
+- **Disciplines** (Strength, Skill, Will) earned by how you fight, spent on six attributes; your class's discipline is cheaper and goes higher, so builds diverge (Ragnarok-style). At 8 ranks you pick one of two permanent **specializations**, each with a fifth skill.
+- **Visible morality**: karma shows as a halo (good) or horns and dark smoke (evil) for everyone. Villagers cheer famous heroes and flee from the wicked; killing them is a wicked deed.
+- **Renown and titles**, shown under your name.
+- **Village and quests**: Elder Mei (E to talk) gives quests (defeat enemies, reach places); some end with a good or evil choice.
+
+### M2 (classes) and beyond
 
 On top of M1 (below):
 
@@ -57,7 +66,7 @@ go -C server run ./cmd/server
 
 Then open `client/project.godot` in Godot and press Play; create an account and a character on the first screen.
 
-Controls: WASD move, click or Tab to target, 1–4 skills, I inventory, right-drag camera, wheel zoom, Esc logout.
+Controls: WASD move, mouse camera, LMB attack (hold: flourish), RMB block, Space roll, F or middle click lock-on, Tab next target, E talk, 1–5 skills, C build and titles, I inventory, wheel zoom, Esc frees the cursor (again to log out).
 
 For content work, run the server with `-dev`: edits to YAML and Lua under `content/` apply within a second (invalid content or broken scripts are rejected and the old version kept). Zone layout and terrain still need a restart.
 
@@ -85,6 +94,9 @@ go -C server run ./cmd/bot -n 50 -duration 20s -fight
 | `content/npcs/*.yaml` | NPCs: stats, attack, respawn, AI script |
 | `content/ai/*.lua` | NPC behavior; `think(npc, mem)` runs 5 times per second |
 | `content/ai/lib/*.lua` | Shared AI code, loaded with `lib(name)` |
+| `content/disciplines.yaml` | Discipline experience, attributes, costs, caps, specialization unlock |
+| `content/titles.yaml` | Renown gains and titles |
+| `content/quests/*.yaml` | Quests: giver, objectives, rewards, good/evil choices |
 | `content/zones/*.yaml` | Zone size, player spawn, NPC spawn groups |
 | `content/items.yaml` | Items (no effects yet; kept in the inventory) |
 | `content/fate.yaml` | Fate: deck size, triggers and their chances, luck/karma odds, loot, and the action catalog |

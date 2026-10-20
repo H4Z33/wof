@@ -21,6 +21,14 @@ const PICK_LAYER := 2
 var entity_id := 0
 var is_local := false
 var class_key := ""
+var title := ""
+var friendly := false
+var quest_giver := false
+var alignment := 0
+var _halo: Node3D
+var _horns: Node3D
+var _bubble: Label3D
+var _bubble_tween: Tween
 # Current PB.ActionState (swing, block, roll, NPC wind-up...).
 var action := 0
 var _action_key := -1
@@ -48,6 +56,9 @@ func setup(spawn: PB.EntitySpawn, local: bool) -> void:
 	kind = spawn.kind
 	display_name = spawn.name
 	class_key = spawn.class_key
+	title = spawn.title
+	friendly = spawn.friendly
+	quest_giver = spawn.quest_giver
 	level = maxi(spawn.level, 1)
 	name = "Entity_%d" % entity_id
 	if kind == PB.EntityKind.ENTITY_KIND_OBJECT:
@@ -340,12 +351,16 @@ func set_action(state: int, key: int) -> void:
 			_hold("Sword_Block")
 		5:  # roll
 			play_action("Roll")
+		8:  # villager cheering
+			play_action("Yes")
+		9:  # villager cowering
+			_hold("Crouch_Idle")
 		6:  # NPC wind-up
 			play_action(attack_anim if not attack_anim.is_empty() else "Punch_Jab")
 		7:  # NPC slam wind-up
 			play_action("Sword_Heavy_Combo")
 		_:
-			if prev in [3, 4]:
+			if prev in [3, 4, 9]:
 				_oneshot = false
 				_play(ANIM_MOVE if _moving else ANIM_IDLE)
 
@@ -358,7 +373,7 @@ func _hold(anim: String) -> void:
 
 
 func _on_animation_finished(anim: StringName) -> void:
-	if anim == ANIM_DEATH or hp <= 0 or action in [3, 4]:
+	if anim == ANIM_DEATH or hp <= 0 or action in [3, 4, 9]:
 		return
 	_oneshot = false
 	_play(ANIM_MOVE if _moving else ANIM_IDLE)
@@ -372,9 +387,147 @@ func _play(anim: String, blend := ANIM_BLEND) -> void:
 func _update_plate() -> void:
 	if _plate == null or is_object():
 		return
-	if is_npc():
+	if is_npc() and friendly:
+		_plate.text = ("!  %s  !" % display_name) if quest_giver else display_name
+		_plate.modulate = Color(1.0, 0.85, 0.3) if quest_giver else Color(0.55, 1.0, 0.6)
+	elif is_npc():
 		_plate.text = "%s  Lv %d" % [display_name, level]
 		_plate.modulate = Color(1.0, 0.45, 0.4) if hp > 0 else Color(0.6, 0.6, 0.6)
 	else:
-		_plate.text = display_name
+		_plate.text = display_name if title.is_empty() else "%s\n%s" % [display_name, title]
 		_plate.modulate = Color(1.0, 0.92, 0.6) if is_local else Color.WHITE
+
+
+## New spawn data for an entity already shown (a title changed).
+func update_spawn(spawn: PB.EntitySpawn) -> void:
+	display_name = spawn.name
+	title = spawn.title
+	level = maxi(spawn.level, 1)
+	_update_plate()
+
+
+## A speech bubble that fades after a few seconds.
+func say(text: String) -> void:
+	if _bubble == null:
+		_bubble = Label3D.new()
+		_bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_bubble.position = Vector3(0, 2.75, 0)
+		_bubble.font_size = 40
+		_bubble.pixel_size = 0.005
+		_bubble.outline_size = 10
+		_bubble.width = 600
+		_bubble.autowrap_mode = TextServer.AUTOWRAP_WORD
+		_bubble.no_depth_test = true
+		_bubble.modulate = Color(1.0, 1.0, 0.9)
+		add_child(_bubble)
+	_bubble.text = "\"%s\"" % text
+	_bubble.modulate.a = 1.0
+	if _bubble_tween != null:
+		_bubble_tween.kill()
+	_bubble_tween = create_tween()
+	_bubble_tween.tween_interval(3.5)
+	_bubble_tween.tween_property(_bubble, "modulate:a", 0.0, 0.8)
+
+
+## Karma made visible, as in Fable: a halo for the good, horns and a dark
+## aura for the wicked, growing with how far they have gone.
+func set_alignment(karma: int) -> void:
+	if karma == alignment or is_npc() or is_object():
+		return
+	alignment = karma
+	var good := clampf((karma - 30) / 70.0, 0.0, 1.0) if karma >= 30 else -1.0
+	var evil := clampf((-karma - 30) / 70.0, 0.0, 1.0) if karma <= -30 else -1.0
+	if good >= 0.0:
+		if _halo == null:
+			_halo = _make_halo()
+		_halo.scale = Vector3.ONE * (0.8 + 0.5 * good)
+	elif _halo != null:
+		_halo.queue_free()
+		_halo = null
+	if evil >= 0.0:
+		if _horns == null:
+			_horns = _make_horns()
+		_horns.scale = Vector3.ONE * (0.6 + 0.9 * evil)
+	elif _horns != null:
+		_horns.queue_free()
+		_horns = null
+
+
+func _head() -> Node3D:
+	var skel := find_children("*", "Skeleton3D", true, false)
+	if skel.is_empty():
+		return self
+	var s: Skeleton3D = skel[0]
+	if s.find_bone("Head") < 0:
+		return self
+	var att := BoneAttachment3D.new()
+	att.bone_name = "Head"
+	s.add_child(att)
+	return att
+
+
+func _make_halo() -> Node3D:
+	var root := Node3D.new()
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.16
+	torus.outer_radius = 0.2
+	ring.mesh = torus
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1.0, 0.88, 0.4)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.85, 0.3)
+	ring.material_override = mat
+	ring.position = Vector3(0, 0.32, 0)
+	root.add_child(ring)
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.85, 0.4)
+	light.light_energy = 0.8
+	light.omni_range = 2.5
+	light.position = ring.position
+	root.add_child(light)
+	_head().add_child(root)
+	return root
+
+
+func _make_horns() -> Node3D:
+	var root := Node3D.new()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.18, 0.06, 0.05)
+	mat.roughness = 0.5
+	for side in [-1, 1]:
+		var horn := MeshInstance3D.new()
+		var cone := CylinderMesh.new()
+		cone.top_radius = 0.0
+		cone.bottom_radius = 0.045
+		cone.height = 0.22
+		horn.mesh = cone
+		horn.material_override = mat
+		horn.position = Vector3(0.08 * side, 0.2, 0.02)
+		horn.rotation = Vector3(-0.3, 0, -0.45 * side)
+		root.add_child(horn)
+	var aura := GPUParticles3D.new()
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = 0.5
+	pm.gravity = Vector3(0, 0.6, 0)
+	pm.scale_min = 0.6
+	pm.scale_max = 1.2
+	aura.process_material = pm
+	var dot := SphereMesh.new()
+	dot.radius = 0.035
+	dot.height = 0.07
+	var dmat := StandardMaterial3D.new()
+	dmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dmat.albedo_color = Color(0.12, 0.02, 0.1, 0.7)
+	dmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dot.material = dmat
+	aura.draw_pass_1 = dot
+	aura.local_coords = true  # the smoke stays around the body
+	aura.amount = 18
+	aura.lifetime = 1.6
+	aura.position = Vector3(0, -0.6, 0)
+	root.add_child(aura)
+	_head().add_child(root)
+	return root

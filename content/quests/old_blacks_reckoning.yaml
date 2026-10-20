@@ -1,0 +1,19 @@
+key: old_blacks_reckoning
+name: Old Black's Reckoning
+giver: elder_mei
+requires: [bandit_trouble]
+summary: Defeat Old Black, the Rogue Elder who leads the bandits.
+offer: Old Black was once one of us, a cultivator who lost his way. Now he leads the bandits. End this, one way or another.
+complete: Old Black is beaten. His men will scatter now. Tell me, what did you do with his treasure?
+objectives:
+  - kill: rogue_elder
+    count: 1
+choices:
+  - key: share
+    text: Share his hoard with the village.
+    reply: The village will feast in your name for a year!
+    rewards: { exp: 400, renown: 80, karma: 20, items: { ancient_manual_fragment: 1 } }
+  - key: keep
+    text: Keep his hoard for yourself.
+    reply: I see. Power changes everyone, it seems.
+    rewards: { exp: 400, renown: 60, karma: -15, items: { ancient_manual_fragment: 1, phoenix_feather: 1 } }

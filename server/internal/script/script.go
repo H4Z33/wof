@@ -45,6 +45,13 @@ type NPC interface {
 	AttackArea(radius float64) bool
 	// CallAllies makes idle NPCs within radius join the NPC's fight.
 	CallAllies(radius float64) int
+	// PlayerInfo is a player's renown and karma (for reactions).
+	PlayerInfo(id uint32) (renown, karma int, ok bool)
+	// Say shows a speech bubble (rate-limited); Emote shows a mood
+	// ("cheer", "cower", ""); Face turns toward an entity.
+	Say(text string)
+	Emote(name string)
+	Face(id uint32)
 }
 
 const npcType = "npc"
@@ -320,6 +327,28 @@ var npcMethods = map[string]lua.LGFunction{
 	"attack_area": func(L *lua.LState) int {
 		L.Push(lua.LBool(check(L).AttackArea(float64(L.CheckNumber(2)))))
 		return 1
+	},
+	"player_info": func(L *lua.LState) int {
+		renown, karma, ok := check(L).PlayerInfo(optID(L, 2))
+		if !ok {
+			L.Push(lua.LNil)
+			return 1
+		}
+		L.Push(lua.LNumber(renown))
+		L.Push(lua.LNumber(karma))
+		return 2
+	},
+	"say": func(L *lua.LState) int {
+		check(L).Say(L.CheckString(2))
+		return 0
+	},
+	"emote": func(L *lua.LState) int {
+		check(L).Emote(L.OptString(2, ""))
+		return 0
+	},
+	"face": func(L *lua.LState) int {
+		check(L).Face(optID(L, 2))
+		return 0
 	},
 	"call_allies": func(L *lua.LState) int {
 		L.Push(lua.LNumber(check(L).CallAllies(float64(L.CheckNumber(2)))))

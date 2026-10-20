@@ -55,6 +55,18 @@ const MODELS := {
 		"color": Color(0.45, 1.0, 0.7),
 		"npc_only": true,
 	},
+	"villager": {
+		"label": "Villager",
+		"scene": "res://assets/characters/mannequin_m/UAL1_Standard.glb",
+		"albedo": Color(0.55, 0.45, 0.3),
+		"npc_only": true,
+	},
+	"elder": {
+		"label": "Elder",
+		"scene": "res://assets/characters/mannequin_f/Mannequin_F.glb",
+		"albedo": Color(0.2, 0.3, 0.5),
+		"npc_only": true,
+	},
 	"old_black": {
 		"label": "Old Black",
 		"scene": "res://assets/characters/old_black/old_black.glb",

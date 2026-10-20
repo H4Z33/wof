@@ -183,17 +183,20 @@ type NPCAttack struct {
 }
 
 type NPC struct {
-	Key       string             `yaml:"key"`
-	Name      string             `yaml:"name"`
-	Model     string             `yaml:"model"`
-	Level     int                `yaml:"level"`
-	HP        int                `yaml:"hp"`
-	Speed     float64            `yaml:"speed"`
-	Exp       int                `yaml:"exp"`
-	RespawnMS int                `yaml:"respawn_ms"`
-	AI        string             `yaml:"ai"`
-	Stats     map[string]float64 `yaml:"stats"`
-	Attack    NPCAttack          `yaml:"attack"`
+	Key       string  `yaml:"key"`
+	Name      string  `yaml:"name"`
+	Model     string  `yaml:"model"`
+	Level     int     `yaml:"level"`
+	HP        int     `yaml:"hp"`
+	Speed     float64 `yaml:"speed"`
+	Exp       int     `yaml:"exp"`
+	RespawnMS int     `yaml:"respawn_ms"`
+	// Friendly NPCs never attack; killing one is a wicked deed.
+	Friendly   bool               `yaml:"friendly"`
+	QuestGiver bool               `yaml:"quest_giver"`
+	AI         string             `yaml:"ai"`
+	Stats      map[string]float64 `yaml:"stats"`
+	Attack     NPCAttack          `yaml:"attack"`
 
 	// AISource is the Lua script text, loaded from AI.
 	AISource string `yaml:"-"`
@@ -214,6 +217,15 @@ type Zone struct {
 	NPCGroups   []NPCGroup `yaml:"npc_groups"`
 	// Terrain is nil for a flat zone.
 	Terrain *ZoneTerrain `yaml:"terrain"`
+	// Decor drawn by the client.
+	Props []Prop `yaml:"props"`
+}
+
+type Prop struct {
+	Kind  string     `yaml:"kind"` // house, lantern
+	At    [2]float64 `yaml:"at"`
+	Yaw   float64    `yaml:"yaw"` // degrees
+	Scale float64    `yaml:"scale"`
 }
 
 // ZoneTerrain describes the heightmap file and the knobs terraingen used to
@@ -321,6 +333,80 @@ type Content struct {
 	Fate *Fate
 	// Disciplines is nil when content/disciplines.yaml is absent.
 	Disciplines *Disciplines
+	// Titles is nil when content/titles.yaml is absent.
+	Titles *Titles
+	Quests map[string]*Quest
+}
+
+// Quest is a task from a quest giver (content/quests/*.yaml).
+type Quest struct {
+	Key        string           `yaml:"key"`
+	Name       string           `yaml:"name"`
+	Giver      string           `yaml:"giver"` // NPC key
+	Requires   []string         `yaml:"requires"`
+	Summary    string           `yaml:"summary"`
+	Offer      string           `yaml:"offer"`
+	Complete   string           `yaml:"complete"`
+	Objectives []QuestObjective `yaml:"objectives"`
+	Rewards    QuestRewards     `yaml:"rewards"`
+	// If set, turning the quest in means picking one (good or evil...).
+	Choices []QuestChoice `yaml:"choices"`
+}
+
+type QuestObjective struct {
+	Kill   string     `yaml:"kill"` // NPC key
+	Count  int        `yaml:"count"`
+	Reach  [2]float64 `yaml:"reach"`
+	Radius float64    `yaml:"radius"`
+	Label  string     `yaml:"label"`
+}
+
+// IsReach reports whether the objective is reaching a place.
+func (o QuestObjective) IsReach() bool { return o.Kill == "" }
+
+// Target is how many units of progress complete the objective.
+func (o QuestObjective) Target() int {
+	if o.IsReach() {
+		return 1
+	}
+	return o.Count
+}
+
+type QuestRewards struct {
+	Exp          int            `yaml:"exp"`
+	Renown       int            `yaml:"renown"`
+	Karma        int            `yaml:"karma"`
+	DisciplineXP int            `yaml:"discipline_xp"`
+	Items        map[string]int `yaml:"items"`
+}
+
+type QuestChoice struct {
+	Key     string       `yaml:"key"`
+	Text    string       `yaml:"text"`
+	Reply   string       `yaml:"reply"`
+	Rewards QuestRewards `yaml:"rewards"`
+}
+
+// Titles configures renown gains and the titles it unlocks.
+type Titles struct {
+	Renown struct {
+		KillPerLevel int `yaml:"kill_per_level"`
+		FateFortune  int `yaml:"fate_fortune"`
+	} `yaml:"renown"`
+	Titles []Title `yaml:"titles"`
+}
+
+type Title struct {
+	Key      string `yaml:"key"`
+	Name     string `yaml:"name"`
+	Renown   int    `yaml:"renown"`
+	MinKarma *int   `yaml:"min_karma"`
+	MaxKarma *int   `yaml:"max_karma"`
+}
+
+// Unlocked reports whether a character with this renown and karma may use the title.
+func (t Title) Unlocked(renown, karma int) bool {
+	return renown >= t.Renown && (t.MinKarma == nil || karma >= *t.MinKarma) && (t.MaxKarma == nil || karma <= *t.MaxKarma)
 }
 
 // SkillByKey finds a skill by its key.
@@ -344,7 +430,7 @@ func (c *Content) Class(key string) *Class {
 // Load reads dir/skills.yaml, dir/npcs/*.yaml, dir/zones/*.yaml and the AI
 // scripts they reference.
 func Load(dir string) (*Content, error) {
-	c := &Content{Skills: map[uint32]*Skill{}, NPCs: map[string]*NPC{}, Zones: map[string]*Zone{}, Items: map[string]*Item{}, Classes: map[string]*Class{}, AILibs: map[string]string{}}
+	c := &Content{Skills: map[uint32]*Skill{}, NPCs: map[string]*NPC{}, Zones: map[string]*Zone{}, Items: map[string]*Item{}, Classes: map[string]*Class{}, AILibs: map[string]string{}, Quests: map[string]*Quest{}}
 
 	var skills struct {
 		Skills []*Skill `yaml:"skills"`
@@ -415,6 +501,23 @@ func Load(dir string) (*Content, error) {
 	}
 	for _, it := range items.Items {
 		c.Items[it.Key] = it
+	}
+
+	questFiles, _ := filepath.Glob(filepath.Join(dir, "quests", "*.yaml"))
+	for _, f := range questFiles {
+		q := &Quest{}
+		if err := readYAML(f, q); err != nil {
+			return nil, err
+		}
+		c.Quests[q.Key] = q
+	}
+
+	titles := &Titles{}
+	switch err := readYAML(filepath.Join(dir, "titles.yaml"), titles); {
+	case err == nil:
+		c.Titles = titles
+	case !errors.Is(err, os.ErrNotExist):
+		return nil, err
 	}
 
 	disc := &Disciplines{}
@@ -527,6 +630,38 @@ func (c *Content) validate() error {
 		for i, g := range z.NPCGroups {
 			if _, ok := c.NPCs[g.NPC]; !ok {
 				errs = append(errs, fmt.Errorf("zone %s group %d: unknown npc %q", id, i, g.NPC))
+			}
+		}
+	}
+	for key, q := range c.Quests {
+		if g, ok := c.NPCs[q.Giver]; !ok || !g.QuestGiver {
+			errs = append(errs, fmt.Errorf("quest %s: giver %q is not a quest-giving npc", key, q.Giver))
+		}
+		for _, r := range q.Requires {
+			if _, ok := c.Quests[r]; !ok {
+				errs = append(errs, fmt.Errorf("quest %s: requires unknown quest %q", key, r))
+			}
+		}
+		if len(q.Objectives) == 0 {
+			errs = append(errs, fmt.Errorf("quest %s: no objectives", key))
+		}
+		for i, o := range q.Objectives {
+			switch {
+			case !o.IsReach() && (c.NPCs[o.Kill] == nil || o.Count <= 0):
+				errs = append(errs, fmt.Errorf("quest %s objective %d: kill needs a known npc and a count", key, i))
+			case o.IsReach() && o.Radius <= 0:
+				errs = append(errs, fmt.Errorf("quest %s objective %d: reach needs a radius", key, i))
+			}
+		}
+		rewards := []QuestRewards{q.Rewards}
+		for _, ch := range q.Choices {
+			rewards = append(rewards, ch.Rewards)
+		}
+		for _, r := range rewards {
+			for item := range r.Items {
+				if _, ok := c.Items[item]; !ok {
+					errs = append(errs, fmt.Errorf("quest %s: reward item %q unknown", key, item))
+				}
 			}
 		}
 	}

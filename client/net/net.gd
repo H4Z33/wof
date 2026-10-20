@@ -10,6 +10,8 @@ signal snapshot_received(snapshot: PB.Snapshot)
 signal skill_rejected(skill_id: int, reason: String)
 signal fate_received(event: PB.FateEvent)
 signal progression_received(progression: PB.Progression)
+signal quest_dialog_received(dialog: PB.QuestDialog)
+signal quest_log_received(log: PB.QuestLog)
 signal disconnected(reason: String)
 
 const PB := preload("res://gen/convergence/v1/world.pb.gd")
@@ -133,6 +135,33 @@ func send_skill(skill_id: int, target_id: int) -> void:
 	send(msg)
 
 
+func send_interact(npc_id: int) -> void:
+	var i := PB.Interact.new()
+	i.npc_id = npc_id
+	var msg := PB.ClientMessage.new()
+	msg.interact = i
+	send(msg)
+
+
+func send_quest_action(quest: String, action: String, choice: String, npc_id: int) -> void:
+	var a := PB.QuestAction.new()
+	a.quest = quest
+	a.action = action
+	a.choice = choice
+	a.npc_id = npc_id
+	var msg := PB.ClientMessage.new()
+	msg.quest_action = a
+	send(msg)
+
+
+func send_choose_title(key: String) -> void:
+	var t := PB.ChooseTitle.new()
+	t.key = key
+	var msg := PB.ClientMessage.new()
+	msg.choose_title = t
+	send(msg)
+
+
 func send_raise(key: String) -> void:
 	var r := PB.RaiseAttribute.new()
 	r.key = key
@@ -211,6 +240,10 @@ func _dispatch(bytes: PackedByteArray) -> void:
 			fate_received.emit(msg.fate)
 		"progression":
 			progression_received.emit(msg.progression)
+		"quest_dialog":
+			quest_dialog_received.emit(msg.quest_dialog)
+		"quest_log":
+			quest_log_received.emit(msg.quest_log)
 		"pong":
 			rtt_ms = Time.get_ticks_msec() - msg.pong.client_time_ms
 		"error":

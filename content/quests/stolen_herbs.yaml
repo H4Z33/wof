@@ -1,0 +1,19 @@
+key: stolen_herbs
+name: The Stolen Herbs
+giver: elder_mei
+requires: [bandit_trouble]
+summary: Defeat 3 Shadow Assassins who stole the village herbs, then decide what to do with them.
+offer: Shadows came in the night and took our healing herbs. Find them in the north-west. What you do with the herbs... I leave to your heart.
+complete: You found them! So... what will you do with the herbs?
+objectives:
+  - kill: shadow_assassin
+    count: 3
+choices:
+  - key: return
+    text: Return the herbs to the village.
+    reply: The healers will weep with joy. You are a true hero.
+    rewards: { exp: 220, renown: 40, karma: 15 }
+  - key: sell
+    text: Keep the herbs and sell them yourself.
+    reply: ...Then go. We will not forget this.
+    rewards: { exp: 220, renown: 15, karma: -20, items: { qi_gathering_pill: 2 } }

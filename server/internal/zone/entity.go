@@ -129,6 +129,10 @@ type player struct {
 	prog      model.Progression
 	progDirty bool
 	progSent  uint32
+
+	renown    int
+	title     string
+	quests    map[string]model.QuestState
 	deadUntil uint32 // respawn tick while dead, else 0
 
 	// Fate.
@@ -186,6 +190,8 @@ type npc struct {
 
 	// The attack being wound up, if any.
 	strike *npcStrike
+	// First tick this NPC may speak again.
+	nextSpeech uint32
 
 	// Temporary NPCs (Fate ambushes) never respawn and vanish at expireAt.
 	temporary bool

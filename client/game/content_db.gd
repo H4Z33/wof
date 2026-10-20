@@ -41,6 +41,11 @@ static func skill(id: int) -> Dictionary:
 	return _skills.get(id, {})
 
 
+## Decor props of a zone: [{kind, at: [x, z], yaw, scale}].
+static func props(zone_id: String) -> Array:
+	return data().get("props", {}).get(zone_id, [])
+
+
 ## A class's weapon ({} for NPCs and unknown classes).
 static func weapon_for(class_key: String) -> Dictionary:
 	return class_by_key(class_key).get("weapon", {})

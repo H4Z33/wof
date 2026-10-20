@@ -20,6 +20,7 @@ const Terrain := preload("res://game/terrain.gd")
 const VFX := preload("res://game/vfx.gd")
 const ContentDB := preload("res://game/content_db.gd")
 const BuildPanel := preload("res://game/build_panel.gd")
+const QuestUI := preload("res://game/quest_ui.gd")
 const INTERP_TICKS := 2.0  # remote entities render this far in the past
 const SNAP_DISTANCE := 3.0  # corrections larger than this teleport instead of blending
 const TAB_RANGE := 40.0
@@ -71,6 +72,7 @@ var _cam_pitch := 0.45
 var _cam_distance := 7.0
 var _weapon: PB.WeaponInfo
 var _build: BuildPanel
+var _quests: QuestUI
 var _hud: Hud
 
 
@@ -110,6 +112,13 @@ func start(welcome: PB.Welcome) -> void:
 	_hud.add_child(_build)
 	_build.raise_requested.connect(Net.send_raise)
 	_build.spec_chosen.connect(Net.send_choose_spec)
+	_build.title_chosen.connect(Net.send_choose_title)
+	_quests = QuestUI.new()
+	_hud.add_child(_quests)
+	_quests.action_requested.connect(Net.send_quest_action)
+	_quests.closed.connect(func(): _capture_mouse(true))
+	Net.quest_dialog_received.connect(_on_quest_dialog)
+	Net.quest_log_received.connect(_on_quest_log)
 	if not autofight and not autowalk:
 		_capture_mouse(true)
 
@@ -370,8 +379,13 @@ func _unhandled_input(event: InputEvent) -> void:
 					get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
+			KEY_E:
+				_interact()
 			KEY_ESCAPE:
-				if captured:
+				if _quests.is_open():
+					_quests.close()
+					get_viewport().set_input_as_handled()
+				elif captured:
 					_capture_mouse(false)  # free the cursor; Esc again logs out
 					get_viewport().set_input_as_handled()
 			KEY_SPACE:
@@ -401,7 +415,7 @@ func _toggle_lock() -> void:
 	var forward := Vector2(-sin(_cam_yaw), -cos(_cam_yaw))
 	for id in _entities:
 		var c: Character = _entities[id]
-		if not c.is_npc() or not c.is_alive():
+		if not c.is_npc() or not c.is_alive() or c.friendly:
 			continue
 		var to := Vector2(c.global_position.x - _pred_pos.x, c.global_position.z - _pred_pos.z)
 		var d := to.length()
@@ -490,7 +504,7 @@ func _enemy_in_front(max_range: float) -> Character:
 	var forward := Vector2(sin(_pred_yaw), cos(_pred_yaw))
 	for id in _entities:
 		var c: Character = _entities[id]
-		if not c.is_npc() or not c.is_alive():
+		if not c.is_npc() or not c.is_alive() or c.friendly:
 			continue
 		var to := Vector2(c.global_position.x - _pred_pos.x, c.global_position.z - _pred_pos.z)
 		var d := to.length()
@@ -561,6 +575,7 @@ func _on_snapshot(snap: PB.Snapshot) -> void:
 
 	for spawn in snap.spawns:
 		if _entities.has(spawn.id):
+			_entities[spawn.id].update_spawn(spawn)  # e.g. a new title
 			continue
 		var c := Character.new()
 		add_child(c)
@@ -573,6 +588,10 @@ func _on_snapshot(snap: PB.Snapshot) -> void:
 
 	for ev in snap.events:
 		_on_combat_event(ev)
+	for sp in snap.speech:
+		var talker: Character = _entities.get(sp.entity_id)
+		if talker != null:
+			talker.say(sp.text)
 
 	if snap.status != null:
 		_on_status(snap.status)
@@ -584,6 +603,7 @@ func _apply_state(snap: PB.Snapshot, state: PB.EntityState) -> void:
 	var c: Character = _entities[state.id]
 	c.set_health(state.hp, state.max_hp)
 	c.set_effects(state.effects)
+	c.set_alignment(state.alignment)
 	if state.id != my_id:
 		c.set_action(state.action, state.action_tick)
 	if state.id == my_id:
@@ -728,6 +748,39 @@ func toggle_build() -> void:
 	_capture_mouse(not _build.visible)
 
 
+## Test option --talk.
+func talk_for_test() -> void:
+	_interact()
+
+
+## E: talk to the nearest quest giver within reach.
+func _interact() -> void:
+	var best: Character = null
+	var best_d := 4.0
+	for id in _entities:
+		var c: Character = _entities[id]
+		if c.is_npc() and c.quest_giver and c.is_alive():
+			var d := c.global_position.distance_to(_pred_pos)
+			if d < best_d:
+				best = c
+				best_d = d
+	if best == null:
+		_hud.show_message("No one to talk to here", Color(0.8, 0.8, 0.8))
+		return
+	Net.send_interact(best.entity_id)
+
+
+func _on_quest_dialog(d: PB.QuestDialog) -> void:
+	_quests.show_dialog(d)
+	_capture_mouse(false)
+
+
+func _on_quest_log(log: PB.QuestLog) -> void:
+	_quests.show_log(log)
+	if not log.inventory.is_empty():
+		_hud.set_inventory(log.inventory)
+
+
 func _on_progression(pr: PB.Progression) -> void:
 	move_speed = pr.move_speed
 	if pr.skills.size() != _skill_order.size():
@@ -791,7 +844,7 @@ func _update_target_visuals() -> void:
 
 
 func _update_hud() -> void:
-	_hud.debug_label.text = "%s  ·  entity %d  ·  visible %d  ·  rtt %d ms\nWASD move · LMB attack (hold: flourish) · RMB block · Space roll · F lock · 1-5 skills · C build · I inventory · Esc cursor" % [
+	_hud.debug_label.text = "%s  ·  entity %d  ·  visible %d  ·  rtt %d ms\nWASD move · LMB attack (hold: flourish) · RMB block · Space roll · F lock · E talk · 1-5 skills · C build · I inventory · Esc cursor" % [
 		zone_id, my_id, _entities.size(), Net.rtt_ms]
 	_hud.set_crosshair(_target_id == 0 and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED)
 	_hud.set_charging(_act == A_CHARGING and _seq - _charge_seq >= (_rules.charge_ticks if _rules else 8))
@@ -896,6 +949,66 @@ func _load_terrain(info: PB.TerrainInfo) -> void:
 		push_warning("terrain hash mismatch: client %s, server %s" % [_terrain.sha256, info.sha256])
 
 
+## Village houses and lanterns from the content bundle.
+func _build_props() -> void:
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.45, 0.32, 0.2)
+	var roof := StandardMaterial3D.new()
+	roof.albedo_color = Color(0.25, 0.42, 0.35)
+	var paper := StandardMaterial3D.new()
+	paper.albedo_color = Color(1.0, 0.75, 0.4)
+	paper.emission_enabled = true
+	paper.emission = Color(1.0, 0.6, 0.25)
+	for p in ContentDB.props(zone_id):
+		var at := Vector2(p["at"][0], p["at"][1])
+		var y: float = _terrain.height(at.x, at.y) if _terrain != null else 0.0
+		var root := Node3D.new()
+		root.position = Vector3(at.x, y, at.y)
+		root.rotation.y = deg_to_rad(float(p.get("yaw", 0.0)))
+		root.scale = Vector3.ONE * float(p.get("scale", 1.0))
+		add_child(root)
+		match p["kind"]:
+			"house":
+				# Sink a little so slopes do not leave it floating.
+				var base := MeshInstance3D.new()
+				var box := BoxMesh.new()
+				box.size = Vector3(4.0, 3.4, 4.5)
+				base.mesh = box
+				base.material_override = wood
+				base.position = Vector3(0, 1.2, 0)
+				root.add_child(base)
+				var top := MeshInstance3D.new()
+				var prism := PrismMesh.new()
+				prism.size = Vector3(5.2, 1.8, 5.6)
+				top.mesh = prism
+				top.material_override = roof
+				top.position = Vector3(0, 3.8, 0)
+				root.add_child(top)
+			"lantern":
+				var pole := MeshInstance3D.new()
+				var cyl := CylinderMesh.new()
+				cyl.top_radius = 0.05
+				cyl.bottom_radius = 0.07
+				cyl.height = 2.2
+				pole.mesh = cyl
+				pole.material_override = wood
+				pole.position = Vector3(0, 1.1, 0)
+				root.add_child(pole)
+				var lamp := MeshInstance3D.new()
+				var lbox := BoxMesh.new()
+				lbox.size = Vector3(0.35, 0.45, 0.35)
+				lamp.mesh = lbox
+				lamp.material_override = paper
+				lamp.position = Vector3(0, 2.35, 0)
+				root.add_child(lamp)
+				var light := OmniLight3D.new()
+				light.light_color = Color(1.0, 0.7, 0.35)
+				light.light_energy = 1.2
+				light.omni_range = 6.0
+				light.position = lamp.position
+				root.add_child(light)
+
+
 func _build_terrain() -> void:
 	var ground := MeshInstance3D.new()
 	ground.mesh = _terrain.build_mesh()
@@ -932,6 +1045,8 @@ void fragment() {
 	mat.set_shader_parameter("water_level", _terrain.water_level)
 	ground.material_override = mat
 	add_child(ground)
+
+	_build_props()
 
 	var water := MeshInstance3D.new()
 	var plane := PlaneMesh.new()

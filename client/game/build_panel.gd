@@ -6,6 +6,7 @@ const PB := preload("res://gen/convergence/v1/world.pb.gd")
 
 signal raise_requested(key: String)
 signal spec_chosen(key: String)
+signal title_chosen(key: String)
 
 var _box: VBoxContainer
 
@@ -84,3 +85,20 @@ func show_progression(pr: PB.Progression) -> void:
 		var key: String = o.key
 		b.pressed.connect(func(): spec_chosen.emit(key))
 		_box.add_child(b)
+
+	if not pr.titles.is_empty():
+		_box.add_child(HSeparator.new())
+		var tl := Label.new()
+		tl.text = "Title"
+		_box.add_child(tl)
+		var row := HFlowContainer.new()
+		for t in pr.titles:
+			var b := Button.new()
+			b.text = t.name
+			b.toggle_mode = true
+			b.button_pressed = t.key == pr.title
+			b.focus_mode = Control.FOCUS_NONE
+			var key: String = t.key
+			b.pressed.connect(func(): title_chosen.emit("" if key == pr.title else key))
+			row.add_child(b)
+		_box.add_child(row)

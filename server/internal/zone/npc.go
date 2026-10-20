@@ -219,6 +219,31 @@ func (n *npc) AttackArea(radius float64) bool {
 	return true
 }
 
+func (n *npc) PlayerInfo(id uint32) (int, int, bool) {
+	t, ok := n.z.entities[id]
+	if !ok || t.player == nil {
+		return 0, 0, false
+	}
+	return t.player.renown, t.player.karma, true
+}
+
+func (n *npc) Say(text string) { n.z.say(n, text) }
+
+// Emote shows a mood: cheer, cower, or "" for none.
+func (n *npc) Emote(name string) {
+	if n.strike != nil {
+		return
+	}
+	a := map[string]pb.ActionState{"cheer": pb.ActionState_ACTION_STATE_CHEER, "cower": pb.ActionState_ACTION_STATE_COWER}[name]
+	n.z.setAction(n.e, a)
+}
+
+func (n *npc) Face(id uint32) {
+	if t, ok := n.z.entities[id]; ok {
+		n.e.yaw = yawToward(n.e.pos, t.pos)
+	}
+}
+
 func (n *npc) CallAllies(radius float64) int {
 	if n.target == 0 {
 		return 0

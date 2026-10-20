@@ -1,0 +1,15 @@
+key: bandit_trouble
+name: Trouble on the Terraces
+giver: elder_mei
+summary: Defeat 5 Mountain Bandits.
+offer: The bandits raid our terraces every night. Drive them off, cultivator, and the village will remember.
+complete: The fields are quiet again. Take this, with our thanks.
+objectives:
+  - kill: mountain_bandit
+    count: 5
+rewards:
+  exp: 150
+  renown: 30
+  karma: 5
+  discipline_xp: 120
+  items: { jade_token: 1 }

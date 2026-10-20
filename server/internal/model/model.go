@@ -22,6 +22,16 @@ type Character struct {
 	Inventory map[string]int
 	// Disciplines and build.
 	Progression Progression
+	Renown      int
+	Title       string
+	// Quest key -> state.
+	Quests map[string]QuestState
+}
+
+// QuestState is one quest's progress for a character.
+type QuestState struct {
+	State    string `json:"state"` // active or done
+	Progress []int  `json:"progress,omitempty"`
 }
 
 // Progression is a character's build: unspent discipline experience,

@@ -238,5 +238,90 @@
     "phoenix_feather": "Phoenix Feather",
     "qi_gathering_pill": "Qi Gathering Pill",
     "spirit_herb": "Spirit Herb"
+  },
+  "props": {
+    "jade_terraces": [
+      {
+        "kind": "house",
+        "at": [
+          -12,
+          5
+        ],
+        "yaw": 70,
+        "scale": 1
+      },
+      {
+        "kind": "house",
+        "at": [
+          -8,
+          -11
+        ],
+        "yaw": 20,
+        "scale": 1
+      },
+      {
+        "kind": "house",
+        "at": [
+          9,
+          -12
+        ],
+        "yaw": -25,
+        "scale": 1
+      },
+      {
+        "kind": "house",
+        "at": [
+          13,
+          4
+        ],
+        "yaw": -80,
+        "scale": 1
+      },
+      {
+        "kind": "house",
+        "at": [
+          6,
+          12
+        ],
+        "yaw": 190,
+        "scale": 1
+      },
+      {
+        "kind": "lantern",
+        "at": [
+          4,
+          3
+        ],
+        "yaw": 0,
+        "scale": 1
+      },
+      {
+        "kind": "lantern",
+        "at": [
+          -4,
+          4
+        ],
+        "yaw": 0,
+        "scale": 1
+      },
+      {
+        "kind": "lantern",
+        "at": [
+          -3,
+          -5
+        ],
+        "yaw": 0,
+        "scale": 1
+      },
+      {
+        "kind": "lantern",
+        "at": [
+          5,
+          -4
+        ],
+        "yaw": 0,
+        "scale": 1
+      }
+    ]
   }
 }

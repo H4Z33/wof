@@ -1,0 +1,17 @@
+key: lights_by_the_lake
+name: Lights by the Lake
+giver: elder_mei
+summary: Visit the lake shore and quiet 2 Jade Wisps.
+offer: Strange lights drift over the lake at dusk. The children say they sing. Go and see, and calm them if you must.
+complete: So they were wisps... The lake is peaceful again.
+objectives:
+  - reach: [12, 36]
+    radius: 7
+    label: Reach the lake shore
+  - kill: jade_wisp
+    count: 2
+rewards:
+  exp: 180
+  renown: 25
+  discipline_xp: 150
+  items: { spirit_herb: 2 }

@@ -40,8 +40,11 @@ func (z *Zone) initFate(p *player) {
 }
 
 func (z *Zone) addKarma(p *player, delta int) {
-	f := z.content.Fate
-	p.karma = max(f.Karma.Min, min(f.Karma.Max, p.karma+delta))
+	lo, hi := -100, 100
+	if f := z.content.Fate; f != nil {
+		lo, hi = f.Karma.Min, f.Karma.Max
+	}
+	p.karma = max(lo, min(hi, p.karma+delta))
 	p.dirty = true
 }
 
@@ -369,6 +372,9 @@ func (z *Zone) applyCard(p *player, card fate.Card, target *entity) (mult float6
 		return mult, false
 	}
 
+	if card.Omen == fate.Fortune && z.content.Titles != nil {
+		z.addRenown(p, z.content.Titles.Renown.FateFortune)
+	}
 	p.kills, p.deaths = 0, 0
 	p.fateHistory = append(p.fateHistory, card.Narration)
 	if len(p.fateHistory) > historyKept {

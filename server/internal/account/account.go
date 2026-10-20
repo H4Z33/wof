@@ -80,12 +80,12 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 	return id, nil
 }
 
-const characterColumns = `id, account_id, name, model, class, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp, luck, karma, inventory, progression`
+const characterColumns = `id, account_id, name, model, class, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp, luck, karma, inventory, progression, renown, title, quests`
 
 func scanCharacter(row pgx.Row) (model.Character, error) {
 	var c model.Character
 	err := row.Scan(&c.ID, &c.AccountID, &c.Name, &c.Model, &c.Class, &c.ZoneID,
-		&c.Pos[0], &c.Pos[1], &c.Pos[2], &c.Yaw, &c.Level, &c.Exp, &c.HP, &c.Luck, &c.Karma, &c.Inventory, &c.Progression)
+		&c.Pos[0], &c.Pos[1], &c.Pos[2], &c.Yaw, &c.Level, &c.Exp, &c.HP, &c.Luck, &c.Karma, &c.Inventory, &c.Progression, &c.Renown, &c.Title, &c.Quests)
 	return c, err
 }
 
@@ -151,6 +151,14 @@ func (s *Service) CreateCharacter(ctx context.Context, c model.Character) (model
 	return c, tx.Commit(ctx)
 }
 
+// questsJSON never returns nil, so the column is '{}' rather than 'null'.
+func questsJSON(q map[string]model.QuestState) map[string]model.QuestState {
+	if q == nil {
+		return map[string]model.QuestState{}
+	}
+	return q
+}
+
 // inventoryJSON never returns nil, so the column is '{}' rather than 'null'.
 func inventoryJSON(inv map[string]int) map[string]int {
 	if inv == nil {
@@ -165,9 +173,10 @@ func (s *Service) SaveCharacters(ctx context.Context, chars []model.Character) e
 	for _, c := range chars {
 		batch.Queue(`UPDATE characters
 			SET zone_id = $2, pos_x = $3, pos_y = $4, pos_z = $5, yaw = $6, level = $7, exp = $8, hp = $9,
-			    karma = $10, inventory = $11, progression = $12, updated_at = now()
+			    karma = $10, inventory = $11, progression = $12, renown = $13, title = $14, quests = $15, updated_at = now()
 			WHERE id = $1`,
-			c.ID, c.ZoneID, c.Pos[0], c.Pos[1], c.Pos[2], c.Yaw, c.Level, c.Exp, c.HP, c.Karma, inventoryJSON(c.Inventory), c.Progression)
+			c.ID, c.ZoneID, c.Pos[0], c.Pos[1], c.Pos[2], c.Yaw, c.Level, c.Exp, c.HP, c.Karma, inventoryJSON(c.Inventory), c.Progression,
+			c.Renown, c.Title, questsJSON(c.Quests))
 	}
 	return s.pool.SendBatch(ctx, batch).Close()
 }

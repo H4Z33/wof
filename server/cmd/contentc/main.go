@@ -57,9 +57,17 @@ type classJSON struct {
 	} `json:"weapon"`
 }
 
+type propJSON struct {
+	Kind  string     `json:"kind"`
+	At    [2]float64 `json:"at"`
+	Yaw   float64    `json:"yaw"`
+	Scale float64    `json:"scale"`
+}
+
 type bundle struct {
-	Classes []classJSON       `json:"classes"`
-	Items   map[string]string `json:"items"` // key -> name
+	Classes []classJSON           `json:"classes"`
+	Items   map[string]string     `json:"items"` // key -> name
+	Props   map[string][]propJSON `json:"props"` // zone id -> decor
 }
 
 func main() {
@@ -92,7 +100,16 @@ func main() {
 }
 
 func build(c *content.Content) bundle {
-	b := bundle{Items: map[string]string{}}
+	b := bundle{Items: map[string]string{}, Props: map[string][]propJSON{}}
+	for id, z := range c.Zones {
+		for _, p := range z.Props {
+			scale := p.Scale
+			if scale == 0 {
+				scale = 1
+			}
+			b.Props[id] = append(b.Props[id], propJSON{Kind: p.Kind, At: p.At, Yaw: p.Yaw, Scale: scale})
+		}
+	}
 	for k, it := range c.Items {
 		b.Items[k] = it.Name
 	}

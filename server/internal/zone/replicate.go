@@ -19,6 +19,9 @@ func (z *Zone) replicate(tick uint32) {
 			Hp: uint32(e.hp), MaxHp: uint32(e.maxHP), Effects: e.effectFlags(tick),
 			Action: e.action, ActionTick: e.actionTick,
 		}
+		if e.player != nil {
+			s.Alignment = int32(e.player.karma)
+		}
 		states[e.id] = s
 		return s
 	}
@@ -37,6 +40,12 @@ func (z *Zone) replicate(tick uint32) {
 				Id: id, Name: e.name, Model: e.model, State: stateOf(e), Kind: e.kind, Level: uint32(e.level),
 				ClassKey: classKeyOf(e),
 			}
+			if e.player != nil {
+				sp.Title = z.titleName(e.player)
+			}
+			if e.npc != nil {
+				sp.Friendly, sp.QuestGiver = e.npc.def.Friendly, e.npc.def.QuestGiver
+			}
 			if e.npc != nil {
 				a := e.npc.def.Attack
 				sp.AttackAnim, sp.AttackVfx, sp.AttackProjectile = a.Anim, a.VFX, a.Projectile
@@ -50,6 +59,11 @@ func (z *Zone) replicate(tick uint32) {
 				delete(p.known, id)
 			}
 		}
+		for _, sp := range z.speech {
+			if _, seen := p.visible[sp.EntityId]; seen {
+				snap.Speech = append(snap.Speech, sp)
+			}
+		}
 		for _, ev := range z.events {
 			_, srcSeen := p.visible[ev.SourceId]
 			_, dstSeen := p.visible[ev.TargetId]
@@ -60,6 +74,7 @@ func (z *Zone) replicate(tick uint32) {
 		z.send(p, &pb.ServerMessage{Payload: &pb.ServerMessage_Snapshot{Snapshot: snap}})
 	}
 	z.events = z.events[:0]
+	z.speech = z.speech[:0]
 }
 
 func (z *Zone) status(p *player) *pb.PlayerStatus {
@@ -74,6 +89,7 @@ func (z *Zone) status(p *player) *pb.PlayerStatus {
 		Resource:   uint32(p.resource),
 		Multiplier: float32(p.multiplier()),
 		Combo:      uint32(p.combo),
+		Renown:     uint32(p.renown),
 	}
 	if p.class != nil {
 		s.ResourceMax = uint32(p.class.Resource.Max)

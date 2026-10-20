@@ -210,7 +210,8 @@ func (z *Zone) refreshDerived(p *player) {
 }
 
 func (z *Zone) progression(p *player) *pb.Progression {
-	out := &pb.Progression{Spec: p.prog.Spec, Skills: z.skillInfos(p), MoveSpeed: float32(z.moveSpeed(p))}
+	out := &pb.Progression{Spec: p.prog.Spec, Skills: z.skillInfos(p), MoveSpeed: float32(z.moveSpeed(p)),
+		Titles: z.titleInfos(p), Title: p.title}
 	d := z.content.Disciplines
 	if d == nil {
 		return out

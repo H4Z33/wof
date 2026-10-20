@@ -80,12 +80,21 @@ func (z *Zone) kill(killer, t *entity) {
 		n.target, n.chaseID, n.hasGoal = 0, 0, false
 		n.corpseUntil = tick + z.ticks(corpseMS)
 		n.respawnAt = tick + z.ticks(n.def.RespawnMS)
-		if kp := killer.player; kp != nil {
+		if kp := killer.player; kp != nil && n.def.Friendly {
+			// Murdering villagers: a wicked deed that everyone will see.
+			z.addKarma(kp, friendlyKarma)
+			z.refreshLook(kp.e)
+			z.log.Info("villager killed", "player", describe(kp.e), "npc", n.def.Key)
+		} else if kp != nil {
 			z.grantExp(kp, int64(n.def.Exp))
+			if tc := z.content.Titles; tc != nil {
+				z.addRenown(kp, n.def.Level*tc.Renown.KillPerLevel)
+			}
 			kp.kills++
 			if f := z.content.Fate; f != nil {
 				z.addKarma(kp, f.Karma.KillHostileNPC)
 			}
+			z.questKill(kp, n.def.Key)
 			if card, ok := z.fateTrigger(kp, fate.TriggerKill, t); ok {
 				z.applyCard(kp, card, t)
 			}
@@ -102,7 +111,11 @@ func (z *Zone) kill(killer, t *entity) {
 }
 
 func (z *Zone) grantExp(p *player, amount int64) {
-	amount = int64(math.Round(float64(amount) * p.multiplier()))
+	z.grantExpRaw(p, int64(math.Round(float64(amount)*p.multiplier())))
+}
+
+// grantExpRaw gives experience without the combat multiplier (quest rewards).
+func (z *Zone) grantExpRaw(p *player, amount int64) {
 	p.exp += amount
 	p.dirty = true
 	leveled := false

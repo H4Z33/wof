@@ -31,6 +31,10 @@ func (s *stubNPC) SelfEffect(string, float64, float64) bool       { return true 
 func (s *stubNPC) EffectOn(uint32, string, float64, float64) bool { return true }
 func (s *stubNPC) AttackArea(float64) bool                        { return true }
 func (s *stubNPC) CallAllies(float64) int                         { return 0 }
+func (s *stubNPC) PlayerInfo(uint32) (int, int, bool)             { return 0, 0, true }
+func (s *stubNPC) Say(string)                                     {}
+func (s *stubNPC) Emote(string)                                   {}
+func (s *stubNPC) Face(uint32)                                    {}
 
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
 

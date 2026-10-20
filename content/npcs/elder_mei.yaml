@@ -1,0 +1,20 @@
+key: elder_mei
+name: Elder Mei
+model: elder
+level: 5
+hp: 120
+speed: 1.2
+exp: 0
+respawn_ms: 30000
+friendly: true
+quest_giver: true
+ai: ai/villager.lua
+stats:
+  attack_range: 0
+  aggro_radius: 0
+  leash_radius: 10
+  wander_radius: 1
+  notice_radius: 6
+attack:
+  damage: [0, 0]
+  cooldown_ms: 100000

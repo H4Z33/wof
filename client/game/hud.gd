@@ -249,7 +249,7 @@ func set_status(s: PB.PlayerStatus) -> void:
 	_exp_bar.max_value = maxi(s.exp_to_next, 1)
 	_exp_bar.value = s.exp
 	_level_label.text = "Level %d   ·   %d / %d exp" % [s.level, s.exp, s.exp_to_next]
-	_stats_label.text = "Luck %d   ·   Karma %+d" % [s.luck, s.karma]
+	_stats_label.text = "Luck %d   ·   Karma %+d   ·   Renown %d" % [s.luck, s.karma, s.renown]
 	_multiplier.text = "x%.1f\n%d hits" % [s.multiplier, s.combo] if s.combo > 0 else ""
 	_res_bar.max_value = maxi(s.resource_max, 1)
 	_res_bar.value = s.resource

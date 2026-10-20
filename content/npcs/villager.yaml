@@ -1,0 +1,22 @@
+# Terrace villagers. Friendly: they never attack, and killing one is a
+# wicked deed (karma). They react to your renown and alignment.
+key: villager
+name: Villager
+model: villager
+level: 1
+hp: 40
+speed: 1.6
+exp: 0
+respawn_ms: 60000
+friendly: true
+ai: ai/villager.lua
+stats:
+  attack_range: 0
+  aggro_radius: 0
+  leash_radius: 30
+  wander_radius: 7
+  # villager.lua: notice players this close.
+  notice_radius: 6
+attack:
+  damage: [0, 0]
+  cooldown_ms: 100000

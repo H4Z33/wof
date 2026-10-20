@@ -92,6 +92,12 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.RaiseAttribute(p.RaiseAttribute.Key)
 		case *pb.ClientMessage_ChooseSpec:
 			h.ChooseSpec(p.ChooseSpec.Key)
+		case *pb.ClientMessage_ChooseTitle:
+			h.ChooseTitle(p.ChooseTitle.Key)
+		case *pb.ClientMessage_Interact:
+			h.Interact(p.Interact.NpcId)
+		case *pb.ClientMessage_QuestAction:
+			h.QuestAction(p.QuestAction)
 		case *pb.ClientMessage_Ping:
 			c.sendMsg(&pb.ServerMessage{Payload: &pb.ServerMessage_Pong{Pong: &pb.Pong{
 				ClientTimeMs: p.Ping.ClientTimeMs,

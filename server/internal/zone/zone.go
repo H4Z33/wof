@@ -145,8 +145,12 @@ type inputMsg struct {
 	id    uint32
 	move  *pb.MoveInput
 	skill *pb.UseSkill
-	raise string // attribute key
-	spec  string // specialization key
+	raise string  // attribute key
+	spec  string  // specialization key
+	title *string // title key ("" = none)
+	// Talking to an NPC, and quest actions.
+	interact uint32
+	quest    *pb.QuestAction
 }
 
 type Zone struct {
@@ -178,7 +182,9 @@ type Zone struct {
 	weaponHit, flourishHit, blockedHit bool
 	// Discipline credited for the damage being dealt right now.
 	hitDiscipline string
-	nav           *nav.Grid // nil on flat zones
+	// NPC speech this tick.
+	speech []*pb.Speech
+	nav    *nav.Grid // nil on flat zones
 	// Mixed into every player's fate entropy so rolls cannot be predicted
 	// from inputs alone.
 	fateSecret uint64
@@ -291,6 +297,28 @@ func (h *Handle) UseSkill(req *pb.UseSkill) {
 func (h *Handle) RaiseAttribute(key string) {
 	select {
 	case h.z.inputs <- inputMsg{id: h.id, raise: key}:
+	default:
+	}
+}
+
+// Interact and QuestAction queue NPC conversations. Never block.
+func (h *Handle) Interact(npcID uint32) {
+	select {
+	case h.z.inputs <- inputMsg{id: h.id, interact: npcID}:
+	default:
+	}
+}
+
+func (h *Handle) QuestAction(a *pb.QuestAction) {
+	select {
+	case h.z.inputs <- inputMsg{id: h.id, quest: a}:
+	default:
+	}
+}
+
+func (h *Handle) ChooseTitle(key string) {
+	select {
+	case h.z.inputs <- inputMsg{id: h.id, title: &key}:
 	default:
 	}
 }
@@ -412,6 +440,9 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		inventory: maps.Clone(c.Inventory),
 		class:     class,
 		prog:      prog,
+		renown:    c.Renown,
+		title:     c.Title,
+		quests:    cloneQuests(c.Quests),
 	}
 	if class != nil {
 		p.resource = float64(class.Resource.Start)
@@ -444,6 +475,7 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		Inventory:     z.inventoryList(p),
 	}}})
 	z.sendProgression(p)
+	z.sendQuestLog(p, false)
 	z.log.Info("player joined", "entity", e.id, "name", e.name, "character", c.ID, "players", len(z.players))
 	return &Handle{z: z, id: e.id}, nil
 }
@@ -477,6 +509,9 @@ func (z *Zone) record(p *player) model.Character {
 		// Copied: the saver reads them on another goroutine.
 		Inventory:   maps.Clone(p.inventory),
 		Progression: cloneProgression(p.prog),
+		Renown:      p.renown,
+		Title:       p.title,
+		Quests:      cloneQuests(p.quests),
 	}
 }
 
@@ -504,6 +539,12 @@ func (z *Zone) handleInput(m inputMsg) {
 		z.raiseAttribute(p, m.raise)
 	case m.spec != "":
 		z.chooseSpec(p, m.spec)
+	case m.title != nil:
+		z.chooseTitle(p, *m.title)
+	case m.interact != 0:
+		z.interact(p, m.interact)
+	case m.quest != nil:
+		z.questAction(p, m.quest)
 	}
 }
 
@@ -525,6 +566,7 @@ func (z *Zone) step() {
 	z.updateLife(tick)
 	z.updateFate(tick)
 	z.updateProgression(tick)
+	z.updateQuests(tick)
 	z.replicate(tick)
 	z.autosave(tick)
 }
