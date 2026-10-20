@@ -19,6 +19,10 @@ const PICK_LAYER := 2
 
 var entity_id := 0
 var is_local := false
+# NPC attack look, from EntitySpawn.
+var attack_anim := ""
+var attack_vfx := ""
+var attack_projectile := false
 var kind := 0  # PB.EntityKind
 var display_name := ""
 var level := 1
@@ -46,7 +50,16 @@ func setup(spawn: PB.EntitySpawn, local: bool) -> void:
 	var parts := Models.instantiate(spawn.model)
 	add_child(parts[0])
 	_player = parts[1]
-	_player.animation_finished.connect(_on_animation_finished)
+	if _player != null:
+		_player.animation_finished.connect(_on_animation_finished)
+	var floating := (parts[0] as Node).get_node_or_null("Body") as Node3D
+	if floating != null:  # procedural spirits float
+		var tw := floating.create_tween().set_loops()
+		tw.tween_property(floating, "position:y", 1.55, 1.2).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(floating, "position:y", 1.3, 1.2).set_trans(Tween.TRANS_SINE)
+	attack_anim = spawn.attack_anim
+	attack_vfx = spawn.attack_vfx
+	attack_projectile = spawn.attack_projectile
 
 	var body := StaticBody3D.new()
 	body.collision_layer = PICK_LAYER
@@ -144,6 +157,7 @@ var _aura: MeshInstance3D
 func set_effects(flags: int) -> void:
 	if flags == effects or is_object():
 		return
+	_effects_gained(flags & ~effects)
 	effects = flags
 	if flags == 0:
 		if _aura != null:
@@ -172,6 +186,24 @@ func set_effects(flags: int) -> void:
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.albedo_color = Color(color, 0.22)
 	_aura.material_override = mat
+
+
+## A short burst when an effect lands (the aura then shows it lasting).
+func _effects_gained(bits: int) -> void:
+	var world := get_parent()
+	if world == null or bits == 0:
+		return
+	var VFX = load("res://game/vfx.gd")
+	if bits & 2:  # weakened
+		VFX.mark(world, self)
+	if bits & 64:  # stunned
+		VFX.burst(world, global_position + Vector3(0, 2.2, 0), Color(1.0, 0.95, 0.3), 14, 1.2, 0.06, 0.0)
+	if bits & 32:  # burning
+		VFX.burst(world, global_position + Vector3(0, 1.0, 0), Color(1.0, 0.5, 0.1), 20, 2.0, 0.06, 2.0)
+	if bits & 16:  # ward
+		VFX.shockwave(world, global_position, 1.6, "ward")
+	if bits & 1 or bits & 4:  # vigor / enraged
+		VFX.flash(world, global_position + Vector3(0, 1.2, 0), Color(1.0, 0.6, 0.2), 3.0)
 
 
 func effect_names() -> PackedStringArray:

@@ -2,7 +2,20 @@
 
 Cultivation MMO prototype: Go server + Godot 4 client. Design: [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md).
 
-## Status: M1 (living zone)
+## Status: M2 (classes) and beyond
+
+On top of M1 (below):
+
+- **Classes**, one per realm: Sword Cultivator (Jade, Qi), Rail Gunner (Brass, Aether Charge built on hit), Mystic (Myth, Divine Favor). Each has four skills: data-driven damage/area/heal/effects, or Lua scripts (`content/skills/*.lua`).
+- **Effects**: weakened, vigor, ward, burning, regen, stunned, slowed (plus Fate's auras), shown as auras and bursts on the client.
+- **Monsters** with their own Lua AI: Stone Guardian (slam, enrage), Shadow Assassin (hit and run), Jade Wisp (ranged, kites), Old Black the Rogue Elder (rallies the camp). Shared AI code in `content/ai/lib/base.lua` (`lib("base")`).
+- **Pathfinding**: NPCs plan around cliffs and water (A* over a nav grid built from the terrain).
+- **Terrain**: generated heightmap with shared walking rules (see below).
+- **Fate**: LLM game master prefetching fate cards (see below).
+- **Content compiler**: `cmd/contentc` validates content and writes `client/gen/content.json`; `-dev` reloads YAML and Lua into the running server.
+- **VFX** built in code: slashes, projectiles per skill, impacts, explosions, healing, pillars of light, marks.
+
+### M1 (living zone)
 
 - Accounts (Argon2id passwords) and up to 4 characters per account in PostgreSQL; level, experience, health and position persist (write-behind every 30 s, and on logout, level-up and shutdown).
 - HTTP account API: register, login, character list/creation, play ticket. Per-IP rate limit on register/login.
@@ -44,7 +57,9 @@ go -C server run ./cmd/server
 
 Then open `client/project.godot` in Godot and press Play; create an account and a character on the first screen.
 
-Controls: WASD move, click or Tab to target, 1–2 skills, right-drag camera, wheel zoom, Esc logout.
+Controls: WASD move, click or Tab to target, 1–4 skills, I inventory, right-drag camera, wheel zoom, Esc logout.
+
+For content work, run the server with `-dev`: edits to YAML and Lua under `content/` apply within a second (invalid content or broken scripts are rejected and the old version kept). Zone layout and terrain still need a restart.
 
 Client test options after `--`: `--user=... --password=... --character=Name --model=zuo_mo --autoconnect --autowalk --autofight --server=http://host:7777 --window=x,y,w,h --cam_yaw=deg --screenshot=path`.
 
@@ -64,9 +79,12 @@ go -C server run ./cmd/bot -n 50 -duration 20s -fight
 
 | File | Defines |
 |---|---|
-| `content/skills.yaml` | Player skills: range, cooldown, damage, animation |
+| `content/classes/*.yaml` | Classes: realm, HP curve, resource, skills |
+| `content/skills.yaml` | Skills: target, range, cooldown, cost, damage/heal/area, effects, VFX, or a Lua script |
+| `content/skills/*.lua` | Scripted skills; `on_cast(ctx)` |
 | `content/npcs/*.yaml` | NPCs: stats, attack, respawn, AI script |
 | `content/ai/*.lua` | NPC behavior; `think(npc, mem)` runs 5 times per second |
+| `content/ai/lib/*.lua` | Shared AI code, loaded with `lib(name)` |
 | `content/zones/*.yaml` | Zone size, player spawn, NPC spawn groups |
 | `content/items.yaml` | Items (no effects yet; kept in the inventory) |
 | `content/fate.yaml` | Fate: deck size, triggers and their chances, luck/karma odds, loot, and the action catalog |

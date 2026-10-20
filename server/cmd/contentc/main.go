@@ -29,6 +29,8 @@ type skillJSON struct {
 	Cost        int     `json:"cost"`
 	Radius      float64 `json:"radius,omitempty"`
 	VFX         string  `json:"vfx"`
+	Anim        string  `json:"anim"`
+	Projectile  bool    `json:"projectile"`
 }
 
 type classJSON struct {
@@ -107,7 +109,8 @@ func build(c *content.Content) bundle {
 		for _, id := range cl.SkillIDs {
 			s := c.Skills[id]
 			cj.Skills = append(cj.Skills, skillJSON{ID: s.ID, Key: s.Key, Name: s.Name, Description: s.Description,
-				Target: s.Target, Range: s.Range, CooldownMS: s.CooldownMS, Cost: s.Cost, Radius: s.Radius, VFX: s.VFX})
+				Target: s.Target, Range: s.Range, CooldownMS: s.CooldownMS, Cost: s.Cost, Radius: s.Radius, VFX: s.VFX,
+				Anim: s.Anim, Projectile: s.Projectile})
 		}
 		b.Classes = append(b.Classes, cj)
 	}

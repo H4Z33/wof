@@ -274,7 +274,7 @@ YAML + Lua (/content) ──contentc──▶ validated bundle
 |---|---|
 | **M0 — Skeleton** ✅ | Monorepo, proto + codegen, auth, gateway, one zone; two Godot clients see each other walk on a test map. Auth is a dev login with in-memory tickets; accounts and PostgreSQL move to M1. |
 | **M1 — Living zone** ✅ | Accounts and characters in PostgreSQL, interest management, NPCs with Lua AI, basic tab-target combat, persistence, bot client with combat mode. |
-| **M2 — Content pipeline** | `contentc`, archetype/variant data, one class per world playable, hot reload. |
+| **M2 — Content pipeline** ✅ | `contentc`, one class per world playable (Sword Cultivator, Rail Gunner, Mystic), data + Lua skills, effects, hot reload (`-dev`). Also done ahead of plan: generated terrain with shared walking rules, NPC pathfinding, four monster types, client VFX. |
 | **M3 — Cultivation** | Realms, breakthroughs, instanced tribulations, specializations. |
 | **M4 — Economy** | Items, ledger, inventory, gathering, crafting, trading. |
 | **M5 — Convergence** | World-state, faction control, scheduled events, guilds, chat channels. |

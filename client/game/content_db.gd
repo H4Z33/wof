@@ -29,6 +29,18 @@ static func class_by_key(key: String) -> Dictionary:
 	return {}
 
 
+static var _skills := {}
+
+
+## Any class's skill by id (for showing other players' skills too).
+static func skill(id: int) -> Dictionary:
+	if _skills.is_empty():
+		for c in classes():
+			for s in c["skills"]:
+				_skills[int(s["id"])] = s
+	return _skills.get(id, {})
+
+
 static func class_label(key: String) -> String:
 	var c := class_by_key(key)
 	return "%s (%s)" % [c["name"], c["world_name"]] if not c.is_empty() else key

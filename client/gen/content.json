@@ -23,7 +23,9 @@
           "range": 2.6,
           "cooldown_ms": 1000,
           "cost": 0,
-          "vfx": "slash"
+          "vfx": "slash",
+          "anim": "Sword_Attack",
+          "projectile": false
         },
         {
           "id": 102,
@@ -34,7 +36,9 @@
           "range": 2.6,
           "cooldown_ms": 6000,
           "cost": 25,
-          "vfx": "slash"
+          "vfx": "slash",
+          "anim": "Punch_Cross",
+          "projectile": false
         },
         {
           "id": 103,
@@ -46,7 +50,9 @@
           "cooldown_ms": 10000,
           "cost": 35,
           "radius": 4,
-          "vfx": "wave"
+          "vfx": "wave",
+          "anim": "Sword_Attack",
+          "projectile": true
         },
         {
           "id": 104,
@@ -57,7 +63,9 @@
           "range": 0,
           "cooldown_ms": 20000,
           "cost": 30,
-          "vfx": "ward"
+          "vfx": "ward",
+          "anim": "Spell_Simple_Shoot",
+          "projectile": false
         }
       ]
     },
@@ -84,7 +92,9 @@
           "range": 22,
           "cooldown_ms": 1300,
           "cost": 0,
-          "vfx": "bullet"
+          "vfx": "bullet",
+          "anim": "Pistol_Shoot",
+          "projectile": true
         },
         {
           "id": 202,
@@ -95,7 +105,9 @@
           "range": 22,
           "cooldown_ms": 8000,
           "cost": 0,
-          "vfx": "beam"
+          "vfx": "beam",
+          "anim": "Pistol_Shoot",
+          "projectile": true
         },
         {
           "id": 203,
@@ -107,7 +119,9 @@
           "cooldown_ms": 12000,
           "cost": 30,
           "radius": 4,
-          "vfx": "explosion"
+          "vfx": "explosion",
+          "anim": "Pistol_Shoot",
+          "projectile": true
         },
         {
           "id": 204,
@@ -118,7 +132,9 @@
           "range": 18,
           "cooldown_ms": 10000,
           "cost": 20,
-          "vfx": "coil"
+          "vfx": "coil",
+          "anim": "Pistol_Shoot",
+          "projectile": true
         }
       ]
     },
@@ -145,7 +161,9 @@
           "range": 18,
           "cooldown_ms": 1500,
           "cost": 0,
-          "vfx": "lance"
+          "vfx": "lance",
+          "anim": "Spell_Simple_Shoot",
+          "projectile": true
         },
         {
           "id": 302,
@@ -156,7 +174,9 @@
           "range": 15,
           "cooldown_ms": 14000,
           "cost": 30,
-          "vfx": "smite"
+          "vfx": "smite",
+          "anim": "Spell_Simple_Shoot",
+          "projectile": false
         },
         {
           "id": 303,
@@ -167,7 +187,9 @@
           "range": 0,
           "cooldown_ms": 15000,
           "cost": 35,
-          "vfx": "heal"
+          "vfx": "heal",
+          "anim": "Spell_Simple_Shoot",
+          "projectile": false
         },
         {
           "id": 304,
@@ -178,7 +200,9 @@
           "range": 18,
           "cooldown_ms": 12000,
           "cost": 20,
-          "vfx": "mark"
+          "vfx": "mark",
+          "anim": "Spell_Simple_Shoot",
+          "projectile": false
         }
       ]
     }

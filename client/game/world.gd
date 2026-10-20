@@ -15,6 +15,8 @@ const PB := preload("res://gen/convergence/v1/world.pb.gd")
 const Character := preload("res://game/character.gd")
 const Hud := preload("res://game/hud.gd")
 const Terrain := preload("res://game/terrain.gd")
+const VFX := preload("res://game/vfx.gd")
+const ContentDB := preload("res://game/content_db.gd")
 const INTERP_TICKS := 2.0  # remote entities render this far in the past
 const SNAP_DISTANCE := 3.0  # corrections larger than this teleport instead of blending
 const TAB_RANGE := 40.0
@@ -394,9 +396,9 @@ func _on_combat_event(ev: PB.CombatEvent) -> void:
 	var dst: Character = _entities.get(ev.target_id)
 	match ev.kind:
 		PB.CombatEventKind.COMBAT_EVENT_KIND_DAMAGE:
-			var skill: PB.SkillInfo = _skills.get(ev.skill_id)
-			if src != null:
-				src.play_action(skill.anim if skill != null else NPC_ATTACK_ANIM)
+			var look := _attack_look(src, ev.skill_id)
+			if src != null and src != dst:
+				src.play_action(look["anim"])
 			if dst == null:
 				return
 			var color := Color(1.0, 0.95, 0.85)
@@ -408,16 +410,25 @@ func _on_combat_event(ev: PB.CombatEvent) -> void:
 			if ev.critical:
 				amount = "%d!" % ev.amount
 				color = Color(1.0, 0.8, 0.2)
-			if skill != null and skill.projectile and src != null:
-				_fire_projectile(src, dst, func(): _land_hit(dst, amount, color))
-			else:
-				_land_hit(dst, amount, color)
+			# Look the target up on arrival: it may have despawned meanwhile.
+			var target_id := ev.target_id
+			var critical := ev.critical
+			var land := func():
+				var d: Character = _entities.get(target_id)
+				if d == null:
+					return
+				_land_hit(d, amount, color)
+				VFX.land(self, look["vfx"], d.global_position, look["radius"], critical)
+			# Damage over time (source == target or repeated ticks) has no cast.
+			if src == null or src == dst or not VFX.cast(self, look["vfx"], src, dst, look["projectile"], land):
+				land.call()
 		PB.CombatEventKind.COMBAT_EVENT_KIND_HEAL:
 			var heal_skill: PB.SkillInfo = _skills.get(ev.skill_id)
 			if src != null and src == dst and heal_skill != null:
 				src.play_action(heal_skill.anim)
 			if dst != null:
 				dst.show_number("+%d" % ev.amount, Color(0.45, 1.0, 0.5))
+				VFX.heal(self, dst.global_position)
 		PB.CombatEventKind.COMBAT_EVENT_KIND_MISS:
 			if src != null:
 				var miss_skill: PB.SkillInfo = _skills.get(ev.skill_id)
@@ -437,28 +448,32 @@ func _land_hit(dst: Character, amount: String, color: Color) -> void:
 		dst.play_hit()
 
 
-func _fire_projectile(src: Character, dst: Character, on_hit: Callable) -> void:
-	var orb := MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.14
-	sphere.height = 0.28
-	orb.mesh = sphere
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(0.5, 0.95, 1.0)
-	mat.emission_enabled = true
-	mat.emission = Color(0.4, 0.9, 1.0)
-	orb.material_override = mat
-	add_child(orb)
-	orb.global_position = src.chest()
-	var end := dst.chest()
-	var tw := orb.create_tween()
-	tw.tween_property(orb, "global_position", end, clampf(src.chest().distance_to(end) / 30.0, 0.1, 0.6))
-	tw.tween_callback(on_hit)
-	tw.tween_callback(orb.queue_free)
+func _attack_look(src: Character, skill_id: int) -> Dictionary:
+	var look := {"anim": NPC_ATTACK_ANIM, "vfx": "hit", "projectile": false, "radius": 0.0}
+	if src != null and src.is_npc():
+		if not src.attack_anim.is_empty():
+			look["anim"] = src.attack_anim
+		if not src.attack_vfx.is_empty():
+			look["vfx"] = src.attack_vfx
+		look["projectile"] = src.attack_projectile
+		return look
+	var s := ContentDB.skill(skill_id)
+	if not s.is_empty():
+		look["anim"] = s.get("anim", NPC_ATTACK_ANIM)
+		look["vfx"] = s.get("vfx", "hit")
+		look["projectile"] = s.get("projectile", false)
+		look["radius"] = float(s.get("radius", 0.0))
+	return look
 
 
 func _on_fate(ev: PB.FateEvent) -> void:
+	var me: Character = _entities.get(my_id)
+	if me != null:
+		var key := "fate_fortune" if ev.omen == PB.FateOmen.FATE_OMEN_FORTUNE else "fate_misfortune"
+		VFX.burst(self, me.global_position + Vector3(0, 1.0, 0), VFX.color(key), 30 + 15 * ev.magnitude, 2.5, 0.06, 1.0)
+		VFX.flash(self, me.global_position + Vector3(0, 1.5, 0), VFX.color(key), 3.0 + ev.magnitude, 6.0)
+		if ev.action == "ambush":
+			VFX.burst(self, me.global_position, Color(0.15, 0.12, 0.18, 0.8), 60, 6.0, 0.25, -1.0)
 	var effect := ""
 	match ev.action:
 		"treasure", "spoils", "cache_found":
