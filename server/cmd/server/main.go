@@ -90,7 +90,11 @@ func run(addr, contentDir string, authBurst int, opts options, log *slog.Logger)
 	saver := persist.NewSaver(accounts, log, time.Second)
 	defer saver.Close() // runs after the zone has saved everyone
 
-	z, err := zone.New(zone.ConfigFor(zc), c, zc, saver, log)
+	zcfg := zone.ConfigFor(zc)
+	if err := zone.LoadTerrain(&zcfg, zc, contentDir); err != nil {
+		return err
+	}
+	z, err := zone.New(zcfg, c, zc, saver, log)
 	if err != nil {
 		return err
 	}

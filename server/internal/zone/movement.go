@@ -33,9 +33,7 @@ func (z *Zone) applyInputs(p *player, dt float64) {
 			dx, dz = 0, 0
 		}
 		step := z.cfg.MoveSpeed * dt
-		lim := z.cfg.HalfExtent
-		e.pos[0] = clamp(e.pos[0]+dx*step, -lim, lim)
-		e.pos[2] = clamp(e.pos[2]+dz*step, -lim, lim)
+		e.pos = z.walk(e.pos, dx*step, dz*step)
 		if y := float64(in.Yaw); !math.IsNaN(y) && !math.IsInf(y, 0) {
 			e.yaw = math.Remainder(y, 2*math.Pi)
 		}
@@ -85,10 +83,16 @@ func (z *Zone) moveNPC(n *npc, dt float64) {
 		return
 	}
 	step := min(n.def.Speed*dt, d-stop)
-	lim := z.cfg.HalfExtent
 	e.yaw = yawToward(e.pos, goal)
-	e.pos[0] = clamp(e.pos[0]+(goal[0]-e.pos[0])/d*step, -lim, lim)
-	e.pos[2] = clamp(e.pos[2]+(goal[2]-e.pos[2])/d*step, -lim, lim)
+	next := z.walk(e.pos, (goal[0]-e.pos[0])/d*step, (goal[2]-e.pos[2])/d*step)
+	if next[0] == e.pos[0] && next[2] == e.pos[2] {
+		// Blocked by a cliff or water: give up on this goal; the AI will
+		// pick another (a chase keeps trying as the target moves).
+		e.moving = false
+		n.hasGoal = false
+		return
+	}
+	e.pos = next
 	e.moving = true
 	z.grid.moved(e)
 }

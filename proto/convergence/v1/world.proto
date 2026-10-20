@@ -7,7 +7,7 @@ option go_package = "convergence/server/gen/convergence/v1;convergencev1";
 // Bump when a change breaks older clients. The server rejects mismatches in Hello.
 enum ProtocolVersion {
   PROTOCOL_VERSION_UNSPECIFIED = 0;
-  PROTOCOL_VERSION_CURRENT = 4;
+  PROTOCOL_VERSION_CURRENT = 5;
 }
 
 enum FateOmen {
@@ -123,6 +123,21 @@ message Welcome {
   PlayerStatus status = 9;
   string character_name = 10;
   repeated InventoryItem inventory = 11;
+  // Absent for a flat zone.
+  TerrainInfo terrain = 12;
+}
+
+// The heightmap and walking rules the client needs to predict movement
+// exactly like the server.
+message TerrainInfo {
+  // File name under client/assets/terrain.
+  string file = 1;
+  // SHA-256 of the file; a mismatch means the client's copy is out of date.
+  string sha256 = 2;
+  // Steepest climb allowed, as rise over run.
+  float max_slope = 3;
+  float water_level = 4;
+  float wade_depth = 5;
 }
 
 message InventoryItem {

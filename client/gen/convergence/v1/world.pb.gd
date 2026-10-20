@@ -191,7 +191,7 @@ class _Reader:
 
 enum ProtocolVersion {
 	PROTOCOL_VERSION_UNSPECIFIED = 0,
-	PROTOCOL_VERSION_CURRENT = 4,
+	PROTOCOL_VERSION_CURRENT = 5,
 }
 
 enum FateOmen {
@@ -672,6 +672,7 @@ class Welcome:
 	var status: PlayerStatus = null
 	var character_name: String = ""
 	var inventory: Array[InventoryItem] = []
+	var terrain: TerrainInfo = null
 
 	func _write(w: _Writer) -> void:
 		if entity_id != 0:
@@ -703,6 +704,8 @@ class Welcome:
 			w.string(character_name)
 		for v in inventory:
 			w.message(11, v)
+		if terrain != null:
+			w.message(12, terrain)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -766,6 +769,15 @@ class Welcome:
 						v._read(sub)
 						if sub.failed: r.failed = true
 						inventory.append(v)
+				12:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := TerrainInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						terrain = v
 				_:
 					r.skip(wt)
 
@@ -777,6 +789,66 @@ class Welcome:
 	# Returns null if the bytes are malformed.
 	static func from_bytes(b: PackedByteArray) -> Welcome:
 		var m := Welcome.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class TerrainInfo:
+	extends RefCounted
+	var file: String = ""
+	var sha256: String = ""
+	var max_slope: float = 0.0
+	var water_level: float = 0.0
+	var wade_depth: float = 0.0
+
+	func _write(w: _Writer) -> void:
+		if not file.is_empty():
+			w.tag(1, 2)
+			w.string(file)
+		if not sha256.is_empty():
+			w.tag(2, 2)
+			w.string(sha256)
+		if max_slope != 0.0:
+			w.tag(3, 5)
+			w.f32(max_slope)
+		if water_level != 0.0:
+			w.tag(4, 5)
+			w.f32(water_level)
+		if wade_depth != 0.0:
+			w.tag(5, 5)
+			w.f32(wade_depth)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: file = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 2: sha256 = r.string()
+					else: r.skip(wt)
+				3:
+					if wt == 5: max_slope = r.f32()
+					else: r.skip(wt)
+				4:
+					if wt == 5: water_level = r.f32()
+					else: r.skip(wt)
+				5:
+					if wt == 5: wade_depth = r.f32()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> TerrainInfo:
+		var m := TerrainInfo.new()
 		var r := _Reader.new(b, 0, b.size())
 		m._read(r)
 		return null if r.failed else m

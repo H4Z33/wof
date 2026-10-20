@@ -51,7 +51,7 @@ func (z *Zone) newNPC(def *content.NPC) (*npc, error) {
 // respawnNPC (re)creates the NPC's entity at a random point of its area,
 // under a new entity id so clients never confuse it with the old body.
 func (z *Zone) respawnNPC(n *npc) {
-	z.placeNPC(n, randomAround([3]float64{n.groupCenter[0], 0, n.groupCenter[1]}, n.groupRadius))
+	z.placeNPC(n, z.pointNear(n.groupCenter[0], n.groupCenter[1], n.groupRadius))
 }
 
 // placeNPC puts a fresh body for n into the world at pos.

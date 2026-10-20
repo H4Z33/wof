@@ -13,6 +13,7 @@ import (
 	"maps"
 	"math"
 	"math/rand/v2"
+	"path/filepath"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"convergence/server/internal/model"
 	"convergence/server/internal/rules"
 	"convergence/server/internal/script"
+	"convergence/server/internal/terrain"
 )
 
 // Conn is the zone's view of a client connection. Send must not block.
@@ -60,6 +62,9 @@ type Config struct {
 	MaxPlayers     int
 	// Interest grid cell size; players see entities up to 1-2 cells away.
 	CellSize float64
+	// Terrain is the zone's heightmap; nil means flat ground at y=0.
+	Terrain     *terrain.Terrain
+	TerrainFile string
 	// Dirty characters are saved at least this often.
 	SaveInterval time.Duration
 	// How long a dead player waits before respawning at Spawn.
@@ -97,6 +102,25 @@ func ConfigFor(z *content.Zone) Config {
 	cfg.Spawn = [3]float64{z.Spawn[0], 0, z.Spawn[1]}
 	cfg.SpawnRadius = z.SpawnRadius
 	return cfg
+}
+
+// LoadTerrain loads the zone's heightmap from the content directory, if it
+// has one.
+func LoadTerrain(cfg *Config, z *content.Zone, contentDir string) error {
+	if z.Terrain == nil {
+		return nil
+	}
+	t, err := terrain.Load(filepath.Join(contentDir, "zones", z.Terrain.File), terrain.Rules{
+		MaxSlope:   degToSlope(z.Terrain.MaxSlopeDeg),
+		WaterLevel: z.Terrain.WaterLevel,
+		WadeDepth:  z.Terrain.WadeDepth,
+	})
+	if err != nil {
+		return fmt.Errorf("zone %s terrain: %w (run cmd/terraingen)", z.ID, err)
+	}
+	cfg.Terrain, cfg.TerrainFile = t, z.Terrain.File
+	cfg.Spawn[1] = t.Height(cfg.Spawn[0], cfg.Spawn[2])
+	return nil
 }
 
 var (
@@ -333,9 +357,10 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		hp:    c.HP,
 		maxHP: rules.MaxHP(level),
 	}
-	if c.ZoneID != z.cfg.ID || !z.inBounds(e.pos) {
+	if c.ZoneID != z.cfg.ID || !z.inBounds(e.pos) || !z.standable(e.pos) {
 		e.pos = z.spawnPoint()
 	}
+	e.pos[1] = z.groundY(e.pos[0], e.pos[2]) // saved on older or flat terrain
 	if e.hp <= 0 || e.hp > e.maxHP {
 		// Logged out dead (or data from an older formula): start fresh at spawn.
 		if e.hp <= 0 {
@@ -376,6 +401,7 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		MoveSpeed:     float32(z.cfg.MoveSpeed),
 		Spawn:         vec(e.pos),
 		HalfExtent:    float32(z.cfg.HalfExtent),
+		Terrain:       z.terrainInfo(),
 		Skills:        z.skills,
 		Status:        z.status(p),
 		CharacterName: c.Name,
@@ -473,7 +499,7 @@ func (z *Zone) inBounds(p [3]float64) bool {
 }
 
 func (z *Zone) spawnPoint() [3]float64 {
-	return randomAround(z.cfg.Spawn, z.cfg.SpawnRadius)
+	return z.pointNear(z.cfg.Spawn[0], z.cfg.Spawn[2], z.cfg.SpawnRadius)
 }
 
 func randomAround(c [3]float64, radius float64) [3]float64 {

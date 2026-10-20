@@ -62,6 +62,34 @@ type Zone struct {
 	Spawn       [2]float64 `yaml:"spawn"`
 	SpawnRadius float64    `yaml:"spawn_radius"`
 	NPCGroups   []NPCGroup `yaml:"npc_groups"`
+	// Terrain is nil for a flat zone.
+	Terrain *ZoneTerrain `yaml:"terrain"`
+}
+
+// ZoneTerrain describes the heightmap file and the knobs terraingen used to
+// build it; the walking rules (slope, water) are applied at runtime.
+type ZoneTerrain struct {
+	File        string  `yaml:"file"`
+	MaxSlopeDeg float64 `yaml:"max_slope_deg"`
+	WaterLevel  float64 `yaml:"water_level"`
+	WadeDepth   float64 `yaml:"wade_depth"`
+
+	// Generation (cmd/terraingen).
+	Seed            uint64  `yaml:"seed"`
+	Spacing         float64 `yaml:"spacing"`
+	Margin          float64 `yaml:"margin"`
+	HillHeight      float64 `yaml:"hill_height"`
+	HillScale       float64 `yaml:"hill_scale"`
+	TerraceStep     float64 `yaml:"terrace_step"`
+	TerraceStrength float64 `yaml:"terrace_strength"`
+	BorderHeight    float64 `yaml:"border_height"`
+	Lakes           []Lake  `yaml:"lakes"`
+}
+
+type Lake struct {
+	Center [2]float64 `yaml:"center"`
+	Radius float64    `yaml:"radius"`
+	Depth  float64    `yaml:"depth"`
 }
 
 type Item struct {
@@ -221,6 +249,9 @@ func (c *Content) validate() error {
 	for id, z := range c.Zones {
 		if z.HalfExtent <= 0 {
 			errs = append(errs, fmt.Errorf("zone %s: half_extent must be positive", id))
+		}
+		if t := z.Terrain; t != nil && (t.File == "" || t.MaxSlopeDeg <= 0 || t.MaxSlopeDeg >= 90 || t.Spacing <= 0) {
+			errs = append(errs, fmt.Errorf("zone %s: terrain needs file, spacing and max_slope_deg in (0, 90)", id))
 		}
 		for i, g := range z.NPCGroups {
 			if _, ok := c.NPCs[g.NPC]; !ok {

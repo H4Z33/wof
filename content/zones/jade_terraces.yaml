@@ -11,3 +11,26 @@ npc_groups:
     count: 4
     center: [-26, 16]
     radius: 6
+
+# Heightmap built by `go -C server run ./cmd/terraingen -zone jade_terraces`,
+# which writes it here and to client/assets/terrain. Re-run it after changing
+# any generation value below (and commit both files).
+terrain:
+  file: jade_terraces.terrain
+  # Walking rules, shared by server and client.
+  max_slope_deg: 40
+  water_level: -1.0
+  wade_depth: 0.6
+  # Generation.
+  seed: 20261019
+  spacing: 0.5
+  margin: 8
+  hill_height: 7
+  hill_scale: 38
+  terrace_step: 1.4
+  terrace_strength: 0.8
+  border_height: 26
+  lakes:
+    - center: [-14, 34]
+      radius: 13
+      depth: -3.5

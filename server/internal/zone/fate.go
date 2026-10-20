@@ -397,7 +397,7 @@ func (z *Zone) spawnAmbush(p *player, count int, a *content.FateAction) {
 		}
 		angle := base + float64(i)*2*math.Pi/float64(count)
 		lim := z.cfg.HalfExtent
-		pos := [3]float64{clamp(p.e.pos[0]+8*math.Cos(angle), -lim, lim), 0, clamp(p.e.pos[2]+8*math.Sin(angle), -lim, lim)}
+		pos := z.pointNear(clamp(p.e.pos[0]+8*math.Cos(angle), -lim, lim), clamp(p.e.pos[2]+8*math.Sin(angle), -lim, lim), 2)
 		z.placeNPC(n, pos)
 		n.temporary = true
 		n.expireAt = tick + z.ticks(90_000)
@@ -417,7 +417,7 @@ func (z *Zone) spawnCache(p *player, itemKey string, magnitude int, a *content.F
 		kind:  pb.EntityKind_ENTITY_KIND_OBJECT,
 		name:  "Hidden Cache",
 		model: "fate_cache",
-		pos:   [3]float64{clamp(p.e.pos[0]+d*math.Cos(angle), -lim, lim), 0, clamp(p.e.pos[2]+d*math.Sin(angle), -lim, lim)},
+		pos:   z.pointNear(clamp(p.e.pos[0]+d*math.Cos(angle), -lim, lim), clamp(p.e.pos[2]+d*math.Sin(angle), -lim, lim), 3),
 		hp:    1,
 		maxHP: 1,
 		level: 1,
