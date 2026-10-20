@@ -74,3 +74,32 @@ func charAt(z *Zone, x, zz float64) (c model.Character) {
 	c.Pos = [3]float64{x, 0, zz}
 	return c
 }
+
+func TestNPCWalksFromCampToSpawnAcrossTerrain(t *testing.T) {
+	z := newTerrainZone(t)
+	n := z.npcs[0]
+	n.MoveTo(z.cfg.Spawn[0], z.cfg.Spawn[2])
+	start := n.e.pos
+	for range 30 * 20 { // 30 s
+		z.moveNPC(n, 1/float64(z.cfg.TickRate))
+		z.tick.Add(1)
+		if !n.hasGoal {
+			break
+		}
+	}
+	if d := hdist(n.e.pos, z.cfg.Spawn); d > 1 {
+		t.Fatalf("bandit from %v stopped at %v, %.1f m from spawn", start, n.e.pos, d)
+	}
+	if n.e.pos[1] != z.groundY(n.e.pos[0], n.e.pos[2]) {
+		t.Error("bandit is not on the ground")
+	}
+}
+
+func BenchmarkNavPathCampToCamp(b *testing.B) {
+	z := newTerrainZone(&testing.T{})
+	for b.Loop() {
+		if _, ok := z.nav.Path(22, -22, -26, 16); !ok {
+			b.Fatal("no path between camps")
+		}
+	}
+}

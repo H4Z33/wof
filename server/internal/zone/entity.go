@@ -145,6 +145,11 @@ type npc struct {
 	corpseUntil uint32 // dead: tick when the body disappears
 	respawnAt   uint32 // dead: tick when it comes back
 
+	// Planned walk around terrain (see steer).
+	path     [][2]float64
+	pathGoal [2]float64
+	pathTick uint32
+
 	// Temporary NPCs (Fate ambushes) never respawn and vanish at expireAt.
 	temporary bool
 	expireAt  uint32

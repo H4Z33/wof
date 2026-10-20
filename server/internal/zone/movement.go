@@ -82,17 +82,67 @@ func (z *Zone) moveNPC(n *npc, dt float64) {
 		}
 		return
 	}
-	step := min(n.def.Speed*dt, d-stop)
-	e.yaw = yawToward(e.pos, goal)
-	next := z.walk(e.pos, (goal[0]-e.pos[0])/d*step, (goal[2]-e.pos[2])/d*step)
-	if next[0] == e.pos[0] && next[2] == e.pos[2] {
-		// Blocked by a cliff or water: give up on this goal; the AI will
-		// pick another (a chase keeps trying as the target moves).
+	wp, ok := z.steer(n, goal)
+	if !ok {
+		// Unreachable (cliffs, water): give up on this goal; the AI picks
+		// another, and a chase retries as the target moves.
 		e.moving = false
 		n.hasGoal = false
+		return
+	}
+	toWP := hdist(e.pos, wp)
+	step := n.def.Speed * dt
+	if len(n.path) <= 1 {
+		step = min(step, d-stop) // last leg: stop at the right distance
+	}
+	step = min(step, toWP)
+	if toWP == 0 {
+		return
+	}
+	e.yaw = yawToward(e.pos, wp)
+	next := z.walk(e.pos, (wp[0]-e.pos[0])/toWP*step, (wp[2]-e.pos[2])/toWP*step)
+	if next[0] == e.pos[0] && next[2] == e.pos[2] {
+		n.path = nil // stuck: plan again next tick
+		e.moving = false
 		return
 	}
 	e.pos = next
 	e.moving = true
 	z.grid.moved(e)
+}
+
+const (
+	waypointReached = 0.4
+	repathMoved     = 1.5 // replan a chase when the target moved this far from the planned goal
+	repathTicks     = 10  // at most one replan per NPC per half second
+)
+
+// steer returns the next point to walk toward on the way to goal, planning
+// a path around terrain when there is one.
+func (z *Zone) steer(n *npc, goal [3]float64) ([3]float64, bool) {
+	if z.nav == nil {
+		return goal, true
+	}
+	tick := z.tick.Load()
+	stale := len(n.path) == 0 || math.Hypot(goal[0]-n.pathGoal[0], goal[2]-n.pathGoal[1]) > repathMoved
+	if stale && (n.pathTick == 0 || tick-n.pathTick >= repathTicks || len(n.path) == 0) {
+		path, ok := z.nav.Path(n.e.pos[0], n.e.pos[2], goal[0], goal[2])
+		n.pathTick = tick
+		if !ok {
+			n.path = nil
+			return goal, false
+		}
+		n.path, n.pathGoal = path, [2]float64{goal[0], goal[2]}
+	}
+	for len(n.path) > 1 && math.Hypot(n.path[0][0]-n.e.pos[0], n.path[0][1]-n.e.pos[2]) < waypointReached {
+		n.path = n.path[1:]
+	}
+	if len(n.path) == 0 {
+		return goal, true
+	}
+	wp := n.path[0]
+	if len(n.path) == 1 {
+		return goal, true // final leg aims at the live goal (a moving chase target)
+	}
+	return [3]float64{wp[0], 0, wp[1]}, true
 }

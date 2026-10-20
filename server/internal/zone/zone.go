@@ -24,6 +24,7 @@ import (
 	"convergence/server/internal/content"
 	"convergence/server/internal/fate"
 	"convergence/server/internal/model"
+	"convergence/server/internal/nav"
 	"convergence/server/internal/rules"
 	"convergence/server/internal/script"
 	"convergence/server/internal/terrain"
@@ -171,6 +172,7 @@ type Zone struct {
 	places   []place
 	aiLoaded map[string]bool
 	caches   []*entity
+	nav      *nav.Grid // nil on flat zones
 	// Mixed into every player's fate entropy so rolls cannot be predicted
 	// from inputs alone.
 	fateSecret uint64
@@ -203,6 +205,9 @@ func New(cfg Config, c *content.Content, zc *content.Zone, saver Saver, log *slo
 		grid:     newGrid(cfg.CellSize),
 		lua:      script.New(log),
 		aiLoaded: make(map[string]bool),
+	}
+	if cfg.Terrain != nil {
+		z.nav = nav.Build(cfg.Terrain, cfg.HalfExtent, 1)
 	}
 	var seed [8]byte
 	crand.Read(seed[:])
