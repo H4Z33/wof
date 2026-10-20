@@ -14,9 +14,10 @@ extends Node3D
 const PB := preload("res://gen/convergence/v1/world.pb.gd")
 const Character := preload("res://game/character.gd")
 const Hud := preload("res://game/hud.gd")
+const Terrain := preload("res://game/terrain.gd")
 const INTERP_TICKS := 2.0  # remote entities render this far in the past
 const SNAP_DISTANCE := 3.0  # corrections larger than this teleport instead of blending
-const TAB_RANGE := 30.0
+const TAB_RANGE := 40.0
 const NPC_ATTACK_ANIM := "Punch_Jab"
 const REJECT_TEXT := {
 	"cooldown": "Not ready yet",
@@ -35,6 +36,8 @@ var zone_id := ""
 var tick_rate := 20
 var move_speed := 5.0
 var half_extent := 60.0
+var _terrain  # Terrain, or null on a flat zone
+var _hud_warning := ""
 
 var _entities := {}  # id -> Character
 var _client_tick := 0.0
@@ -76,11 +79,14 @@ func start(welcome: PB.Welcome) -> void:
 	for s in welcome.skills:
 		_skills[s.id] = s
 		_skill_order.append(s.id)
+	_load_terrain(welcome.terrain)
 	_build_environment()
 	_build_camera()
 	_hud = Hud.new()
 	add_child(_hud)
 	_hud.set_skills(welcome.skills)
+	if not _hud_warning.is_empty():
+		_hud.show_message(_hud_warning, Color(1, 0.4, 0.35))
 	_hud.skill_pressed.connect(use_skill)
 	_build_ring()
 	if welcome.status != null:
@@ -178,9 +184,13 @@ func _simulate(pos: Vector3, dir: Vector2) -> Vector3:
 	if dir.length() > 1.0:
 		dir = dir.normalized()
 	var step := move_speed / tick_rate
-	pos.x = clampf(pos.x + dir.x * step, -half_extent, half_extent)
-	pos.z = clampf(pos.z + dir.y * step, -half_extent, half_extent)
-	return pos
+	# Same order as the server (zone.walk): clamp to bounds, then terrain rules.
+	var tx := clampf(pos.x + dir.x * step, -half_extent, half_extent)
+	var tz := clampf(pos.z + dir.y * step, -half_extent, half_extent)
+	if _terrain == null:
+		return Vector3(tx, pos.y, tz)
+	var p: Vector2 = _terrain.move(pos.x, pos.z, tx - pos.x, tz - pos.z)
+	return Vector3(p.x, _terrain.height(p.x, p.y), p.y)
 
 
 func _reconcile(server_pos: Vector3, ack: int) -> void:
@@ -472,6 +482,9 @@ func _update_camera(target: Vector3) -> void:
 	var offset := Vector3(sin(_cam_yaw) * cos(_cam_pitch), sin(_cam_pitch), cos(_cam_yaw) * cos(_cam_pitch))
 	var focus := target + Vector3(0, 1.4, 0)
 	_camera.position = focus + offset * _cam_distance
+	if _terrain != null:
+		# Keep the camera above hills behind the player.
+		_camera.position.y = maxf(_camera.position.y, _terrain.height(_camera.position.x, _camera.position.z) + 0.6)
 	_camera.look_at(focus)
 
 
@@ -542,7 +555,11 @@ func _build_environment() -> void:
 	sun.shadow_enabled = true
 	add_child(sun)
 
-	# Ground with a 2 m grid so movement reads clearly.
+	if _terrain != null:
+		_build_terrain()
+		return
+
+	# Flat zone: ground with a 2 m grid so movement reads clearly.
 	var ground := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(half_extent * 2.0 + 20.0, half_extent * 2.0 + 20.0)
@@ -571,17 +588,69 @@ void fragment() {
 	ground.material_override = mat
 	add_child(ground)
 
-	# A few stone pillars as landmarks (visual only; no server collision yet).
-	var stone := StandardMaterial3D.new()
-	stone.albedo_color = Color(0.62, 0.60, 0.55)
-	stone.roughness = 0.9
-	for p in [Vector3(8, 0, -6), Vector3(-10, 0, -12), Vector3(14, 0, 10), Vector3(-6, 0, 9), Vector3(0, 0, -20)]:
-		var pillar := MeshInstance3D.new()
-		var cyl := CylinderMesh.new()
-		cyl.top_radius = 0.6
-		cyl.bottom_radius = 0.8
-		cyl.height = 4.0
-		pillar.mesh = cyl
-		pillar.material_override = stone
-		pillar.position = p + Vector3(0, 2, 0)
-		add_child(pillar)
+
+## Loads the zone heightmap named in Welcome and checks it matches the server's.
+func _load_terrain(info: PB.TerrainInfo) -> void:
+	if info == null:
+		return
+	_terrain = Terrain.load_file("res://assets/terrain/" + info.file)
+	if _terrain == null:
+		_hud_warning = "Terrain file %s is missing; movement will stutter." % info.file
+		return
+	_terrain.max_slope = info.max_slope
+	_terrain.water_level = info.water_level
+	_terrain.wade_depth = info.wade_depth
+	if _terrain.sha256 != info.sha256:
+		_hud_warning = "Your terrain files are out of date; update the client."
+		push_warning("terrain hash mismatch: client %s, server %s" % [_terrain.sha256, info.sha256])
+
+
+func _build_terrain() -> void:
+	var ground := MeshInstance3D.new()
+	ground.mesh = _terrain.build_mesh()
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode cull_disabled;
+uniform float max_slope = 0.84;
+uniform float water_level = -1.0;
+varying vec3 world_pos;
+varying vec3 world_normal;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void vertex() {
+	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	world_normal = NORMAL;
+}
+void fragment() {
+	vec3 n = normalize(world_normal);
+	float slope = sqrt(max(0.0, 1.0 - n.y * n.y)) / max(n.y, 0.001);
+	float speckle = hash(floor(world_pos.xz * 0.8)) * 0.035 - 0.0175;
+	vec3 grass = mix(vec3(0.27, 0.44, 0.25), vec3(0.45, 0.55, 0.30), clamp(world_pos.y / 14.0, 0.0, 1.0));
+	vec3 rock = vec3(0.47, 0.45, 0.41);
+	vec3 sand = vec3(0.68, 0.62, 0.47);
+	vec3 c = mix(grass, rock, smoothstep(max_slope * 0.7, max_slope * 1.05, slope));
+	c = mix(c, sand, 1.0 - smoothstep(water_level + 0.15, water_level + 0.8, world_pos.y));
+	// Colors above are sRGB; the renderer works in linear space.
+	ALBEDO = pow(max(c + speckle, vec3(0.0)), vec3(2.2));
+	ROUGHNESS = 0.95;
+}
+"""
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.set_shader_parameter("max_slope", _terrain.max_slope)
+	mat.set_shader_parameter("water_level", _terrain.water_level)
+	ground.material_override = mat
+	add_child(ground)
+
+	var water := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(_terrain.extent(), _terrain.extent())
+	water.mesh = plane
+	water.position = Vector3(_terrain.origin_x + _terrain.extent() / 2.0, _terrain.water_level, _terrain.origin_z + _terrain.extent() / 2.0)
+	var wmat := StandardMaterial3D.new()
+	wmat.albedo_color = Color(0.18, 0.42, 0.55, 0.65)
+	wmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	wmat.roughness = 0.08
+	wmat.metallic = 0.3
+	water.material_override = wmat
+	add_child(water)

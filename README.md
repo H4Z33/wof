@@ -73,6 +73,16 @@ go -C server run ./cmd/bot -n 50 -duration 20s -fight
 
 The server validates references at startup and refuses to start on errors.
 
+## Terrain
+
+Zones can have a heightmap (`terrain:` in the zone YAML). The server and the client apply the same walking rules: no climbing slopes steeper than `max_slope_deg` (sliding along an axis instead), no walking into water deeper than `wade_depth`, and characters always stand on the ground. The client checks the server's SHA-256 of the file in `Welcome`.
+
+Heightmaps are generated, not hand-made. After changing a zone's generation values, rebuild it (this writes `content/zones/<file>` and `client/assets/terrain/<file>`, checks that every camp is reachable from spawn, and can draw a preview):
+
+```bash
+go -C server run ./cmd/terraingen -zone jade_terraces -preview terrain.png
+```
+
 ## Fate (luck and karma)
 
 A proof of concept of an LLM "game master". Each character has **luck** (rolled at creation) and **karma** (changes with deeds). In the background, the Fate agent prepares a small deck of possible fates for each player: situations and narrations that fit their place, deeds and standing. During play, triggers (a hit, a kill, a long walk, a rest, a close call) roll dice fed by the player's own inputs; when fate strikes, the server draws the matching card and applies it at once. Actions include treasure, healing, experience, critical hits, exposed weaknesses, auras, hidden caches, extra spoils, ambushes, mishaps, misses and enraged enemies.
