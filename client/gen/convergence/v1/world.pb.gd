@@ -191,7 +191,7 @@ class _Reader:
 
 enum ProtocolVersion {
 	PROTOCOL_VERSION_UNSPECIFIED = 0,
-	PROTOCOL_VERSION_CURRENT = 5,
+	PROTOCOL_VERSION_CURRENT = 6,
 }
 
 enum FateOmen {
@@ -213,6 +213,11 @@ enum EffectFlag {
 	EFFECT_FLAG_WEAKENED = 2,
 	EFFECT_FLAG_ENRAGED = 4,
 	EFFECT_FLAG_ILL_OMEN = 8,
+	EFFECT_FLAG_WARD = 16,
+	EFFECT_FLAG_BURNING = 32,
+	EFFECT_FLAG_STUNNED = 64,
+	EFFECT_FLAG_SLOWED = 128,
+	EFFECT_FLAG_REGEN = 256,
 }
 
 enum CombatEventKind {
@@ -220,6 +225,7 @@ enum CombatEventKind {
 	COMBAT_EVENT_KIND_DAMAGE = 1,
 	COMBAT_EVENT_KIND_DEATH = 2,
 	COMBAT_EVENT_KIND_MISS = 3,
+	COMBAT_EVENT_KIND_HEAL = 4,
 }
 
 class Vec3:
@@ -673,6 +679,7 @@ class Welcome:
 	var character_name: String = ""
 	var inventory: Array[InventoryItem] = []
 	var terrain: TerrainInfo = null
+	var class_info: ClassInfo = null
 
 	func _write(w: _Writer) -> void:
 		if entity_id != 0:
@@ -706,6 +713,8 @@ class Welcome:
 			w.message(11, v)
 		if terrain != null:
 			w.message(12, terrain)
+		if class_info != null:
+			w.message(13, class_info)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -778,6 +787,15 @@ class Welcome:
 						v._read(sub)
 						if sub.failed: r.failed = true
 						terrain = v
+				13:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := ClassInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						class_info = v
 				_:
 					r.skip(wt)
 
@@ -789,6 +807,66 @@ class Welcome:
 	# Returns null if the bytes are malformed.
 	static func from_bytes(b: PackedByteArray) -> Welcome:
 		var m := Welcome.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class ClassInfo:
+	extends RefCounted
+	var key: String = ""
+	var name: String = ""
+	var world: String = ""
+	var resource_name: String = ""
+	var resource_color: String = ""
+
+	func _write(w: _Writer) -> void:
+		if not key.is_empty():
+			w.tag(1, 2)
+			w.string(key)
+		if not name.is_empty():
+			w.tag(2, 2)
+			w.string(name)
+		if not world.is_empty():
+			w.tag(3, 2)
+			w.string(world)
+		if not resource_name.is_empty():
+			w.tag(4, 2)
+			w.string(resource_name)
+		if not resource_color.is_empty():
+			w.tag(5, 2)
+			w.string(resource_color)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: key = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 2: name = r.string()
+					else: r.skip(wt)
+				3:
+					if wt == 2: world = r.string()
+					else: r.skip(wt)
+				4:
+					if wt == 2: resource_name = r.string()
+					else: r.skip(wt)
+				5:
+					if wt == 2: resource_color = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> ClassInfo:
+		var m := ClassInfo.new()
 		var r := _Reader.new(b, 0, b.size())
 		m._read(r)
 		return null if r.failed else m
@@ -907,6 +985,11 @@ class SkillInfo:
 	var cooldown_ms: int = 0
 	var anim: String = ""
 	var projectile: bool = false
+	var description: String = ""
+	var cost: int = 0
+	var target_self: bool = false
+	var vfx: String = ""
+	var radius: float = 0.0
 
 	func _write(w: _Writer) -> void:
 		if id != 0:
@@ -927,6 +1010,21 @@ class SkillInfo:
 		if projectile != false:
 			w.tag(6, 0)
 			w.boolean(projectile)
+		if not description.is_empty():
+			w.tag(7, 2)
+			w.string(description)
+		if cost != 0:
+			w.tag(8, 0)
+			w.varint(cost)
+		if target_self != false:
+			w.tag(9, 0)
+			w.boolean(target_self)
+		if not vfx.is_empty():
+			w.tag(10, 2)
+			w.string(vfx)
+		if radius != 0.0:
+			w.tag(11, 5)
+			w.f32(radius)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -950,6 +1048,21 @@ class SkillInfo:
 					else: r.skip(wt)
 				6:
 					if wt == 0: projectile = r.boolean()
+					else: r.skip(wt)
+				7:
+					if wt == 2: description = r.string()
+					else: r.skip(wt)
+				8:
+					if wt == 0: cost = r.uint32()
+					else: r.skip(wt)
+				9:
+					if wt == 0: target_self = r.boolean()
+					else: r.skip(wt)
+				10:
+					if wt == 2: vfx = r.string()
+					else: r.skip(wt)
+				11:
+					if wt == 5: radius = r.f32()
 					else: r.skip(wt)
 				_:
 					r.skip(wt)
@@ -976,6 +1089,8 @@ class PlayerStatus:
 	var respawn_in_ms: int = 0
 	var luck: int = 0
 	var karma: int = 0
+	var resource: int = 0
+	var resource_max: int = 0
 
 	func _write(w: _Writer) -> void:
 		if level != 0:
@@ -1002,6 +1117,12 @@ class PlayerStatus:
 		if karma != 0:
 			w.tag(8, 0)
 			w.zigzag(karma)
+		if resource != 0:
+			w.tag(9, 0)
+			w.varint(resource)
+		if resource_max != 0:
+			w.tag(10, 0)
+			w.varint(resource_max)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -1031,6 +1152,12 @@ class PlayerStatus:
 					else: r.skip(wt)
 				8:
 					if wt == 0: karma = r.zigzag32()
+					else: r.skip(wt)
+				9:
+					if wt == 0: resource = r.uint32()
+					else: r.skip(wt)
+				10:
+					if wt == 0: resource_max = r.uint32()
 					else: r.skip(wt)
 				_:
 					r.skip(wt)
@@ -1134,6 +1261,7 @@ class EntitySpawn:
 	var state: EntityState = null
 	var kind: int = 0
 	var level: int = 0
+	var class_key: String = ""
 
 	func _write(w: _Writer) -> void:
 		if id != 0:
@@ -1153,6 +1281,9 @@ class EntitySpawn:
 		if level != 0:
 			w.tag(6, 0)
 			w.varint(level)
+		if not class_key.is_empty():
+			w.tag(7, 2)
+			w.string(class_key)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -1182,6 +1313,9 @@ class EntitySpawn:
 					else: r.skip(wt)
 				6:
 					if wt == 0: level = r.uint32()
+					else: r.skip(wt)
+				7:
+					if wt == 2: class_key = r.string()
 					else: r.skip(wt)
 				_:
 					r.skip(wt)

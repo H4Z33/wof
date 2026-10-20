@@ -1,0 +1,194 @@
+{
+  "classes": [
+    {
+      "key": "sword_cultivator",
+      "name": "Sword Cultivator",
+      "world": "jade",
+      "world_name": "Jade Realm",
+      "archetype": "warrior",
+      "description": "A cultivator of the Jade realm who refines qi through the sword. Strong up close, hard to kill.",
+      "hp": 120,
+      "resource": {
+        "name": "Qi",
+        "color": "#6fd6a8",
+        "max": 100
+      },
+      "skills": [
+        {
+          "id": 101,
+          "key": "jade_slash",
+          "name": "Jade Slash",
+          "description": "A swift cut of the jade blade.",
+          "target": "enemy",
+          "range": 2.6,
+          "cooldown_ms": 1000,
+          "cost": 0,
+          "vfx": "slash"
+        },
+        {
+          "id": 102,
+          "key": "flowing_strikes",
+          "name": "Flowing Strikes",
+          "description": "Three strikes that flow like water.",
+          "target": "enemy",
+          "range": 2.6,
+          "cooldown_ms": 6000,
+          "cost": 25,
+          "vfx": "slash"
+        },
+        {
+          "id": 103,
+          "key": "sword_qi_wave",
+          "name": "Sword Qi Wave",
+          "description": "A crescent of sword qi that cuts everything around the target.",
+          "target": "enemy",
+          "range": 10,
+          "cooldown_ms": 10000,
+          "cost": 35,
+          "radius": 4,
+          "vfx": "wave"
+        },
+        {
+          "id": 104,
+          "key": "iron_meditation",
+          "name": "Iron Body Meditation",
+          "description": "Harden the body and mend wounds; damage taken is reduced.",
+          "target": "self",
+          "range": 0,
+          "cooldown_ms": 20000,
+          "cost": 30,
+          "vfx": "ward"
+        }
+      ]
+    },
+    {
+      "key": "rail_gunner",
+      "name": "Rail Gunner",
+      "world": "brass",
+      "world_name": "Brass Realm",
+      "archetype": "ranger",
+      "description": "An engineer-soldier of the Brass realm. Builds Aether Charge with every hit and spends it on devastating shots.",
+      "hp": 100,
+      "resource": {
+        "name": "Aether Charge",
+        "color": "#e0a23c",
+        "max": 100
+      },
+      "skills": [
+        {
+          "id": 201,
+          "key": "piston_shot",
+          "name": "Piston Shot",
+          "description": "A steam-driven slug. Builds Aether Charge.",
+          "target": "enemy",
+          "range": 22,
+          "cooldown_ms": 1300,
+          "cost": 0,
+          "vfx": "bullet"
+        },
+        {
+          "id": 202,
+          "key": "overcharge_shot",
+          "name": "Overcharge Shot",
+          "description": "Pours all Aether Charge into one shot. Needs 25 charge.",
+          "target": "enemy",
+          "range": 22,
+          "cooldown_ms": 8000,
+          "cost": 0,
+          "vfx": "beam"
+        },
+        {
+          "id": 203,
+          "key": "arc_grenade",
+          "name": "Arc Grenade",
+          "description": "Explodes around the target and sets it ablaze.",
+          "target": "enemy",
+          "range": 18,
+          "cooldown_ms": 12000,
+          "cost": 30,
+          "radius": 4,
+          "vfx": "explosion"
+        },
+        {
+          "id": 204,
+          "key": "stasis_coil",
+          "name": "Stasis Coil",
+          "description": "A humming coil that slows the target.",
+          "target": "enemy",
+          "range": 18,
+          "cooldown_ms": 10000,
+          "cost": 20,
+          "vfx": "coil"
+        }
+      ]
+    },
+    {
+      "key": "mystic",
+      "name": "Mystic",
+      "world": "myth",
+      "world_name": "Myth Realm",
+      "archetype": "leader",
+      "description": "A voice of the gods of the Myth realm. Heals allies, stuns and marks foes for the kill.",
+      "hp": 95,
+      "resource": {
+        "name": "Divine Favor",
+        "color": "#b39dff",
+        "max": 100
+      },
+      "skills": [
+        {
+          "id": 301,
+          "key": "spirit_lance",
+          "name": "Spirit Lance",
+          "description": "A lance of spirit light.",
+          "target": "enemy",
+          "range": 18,
+          "cooldown_ms": 1500,
+          "cost": 0,
+          "vfx": "lance"
+        },
+        {
+          "id": 302,
+          "key": "divine_rebuke",
+          "name": "Divine Rebuke",
+          "description": "The heavens strike the target, stunning it.",
+          "target": "enemy",
+          "range": 15,
+          "cooldown_ms": 14000,
+          "cost": 30,
+          "vfx": "smite"
+        },
+        {
+          "id": 303,
+          "key": "blessing_of_dawn",
+          "name": "Blessing of Dawn",
+          "description": "Heals you and nearby cultivators, then keeps healing.",
+          "target": "self",
+          "range": 0,
+          "cooldown_ms": 15000,
+          "cost": 35,
+          "vfx": "heal"
+        },
+        {
+          "id": 304,
+          "key": "mark_of_judgment",
+          "name": "Mark of Judgment",
+          "description": "Marks the target; it takes more damage from everyone.",
+          "target": "enemy",
+          "range": 18,
+          "cooldown_ms": 12000,
+          "cost": 20,
+          "vfx": "mark"
+        }
+      ]
+    }
+  ],
+  "items": {
+    "ancient_manual_fragment": "Fragment of an Ancient Manual",
+    "copper_coin_string": "String of Copper Coins",
+    "jade_token": "Jade Token",
+    "phoenix_feather": "Phoenix Feather",
+    "qi_gathering_pill": "Qi Gathering Pill",
+    "spirit_herb": "Spirit Herb"
+  }
+}

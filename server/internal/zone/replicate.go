@@ -34,6 +34,7 @@ func (z *Zone) replicate(tick uint32) {
 			}
 			snap.Spawns = append(snap.Spawns, &pb.EntitySpawn{
 				Id: id, Name: e.name, Model: e.model, State: stateOf(e), Kind: e.kind, Level: uint32(e.level),
+				ClassKey: classKeyOf(e),
 			})
 			p.known[id] = true
 		}
@@ -64,6 +65,10 @@ func (z *Zone) status(p *player) *pb.PlayerStatus {
 		MaxHp:     uint32(p.e.maxHP),
 		Luck:      uint32(p.luck),
 		Karma:     int32(p.karma),
+		Resource:  uint32(p.resource),
+	}
+	if p.class != nil {
+		s.ResourceMax = uint32(p.class.Resource.Max)
 	}
 	if p.deadUntil != 0 {
 		if now := z.tick.Load(); p.deadUntil > now {

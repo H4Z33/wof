@@ -18,60 +18,17 @@ const (
 	corpseMS      = 3000
 )
 
-func (z *Zone) useSkill(p *player, req *pb.UseSkill) {
-	reject := func(reason string) {
-		z.send(p, &pb.ServerMessage{Payload: &pb.ServerMessage_SkillRejected{
-			SkillRejected: &pb.SkillRejected{SkillId: req.SkillId, Reason: reason},
-		}})
-	}
-	sk, ok := z.content.Skills[req.SkillId]
-	if !ok {
-		reject("unknown_skill")
-		return
-	}
-	if !p.e.alive() {
-		reject("dead")
-		return
-	}
-	t, ok := z.entities[req.TargetId]
-	if !ok || t.npc == nil || !t.alive() {
-		// M1 has no PvP: players can only fight NPCs.
-		reject("invalid_target")
-		return
-	}
-	tick := z.tick.Load()
-	if tick+cooldownSlack < p.cooldowns[sk.ID] {
-		reject("cooldown")
-		return
-	}
-	if hdist(p.e.pos, t.pos) > sk.Range+rangeTolerance {
-		reject("out_of_range")
-		return
-	}
-	p.cooldowns[sk.ID] = tick + z.ticks(sk.CooldownMS)
-	p.e.yaw = yawToward(p.e.pos, t.pos)
-	p.entropy.Mix(uint64(sk.ID), uint64(t.id), uint64(tick))
-
-	// Fate may turn this very blow into a critical hit or a miss.
-	mult, miss := 1.0, false
-	if card, ok := z.fateTrigger(p, fate.TriggerStrike, t); ok {
-		mult, miss = z.applyCard(p, card, t)
-	}
-	if miss {
-		z.events = append(z.events, &pb.CombatEvent{
-			Kind: pb.CombatEventKind_COMBAT_EVENT_KIND_MISS, SourceId: p.e.id, TargetId: t.id, SkillId: sk.ID,
-		})
-		return
-	}
-	amount := float64(roll(sk.Damage)) * rules.DamageMultiplier(p.e.level) * mult
-	z.damage(p.e, t, sk.ID, amount, mult > 1)
-}
-
 func roll(r content.Range) int { return r[0] + rand.IntN(r[1]-r[0]+1) }
 
 // damage applies base damage, scaled by both sides' active effects.
 func (z *Zone) damage(src, t *entity, skillID uint32, base float64, critical bool) {
+	if !t.alive() {
+		return
+	}
 	tick := z.tick.Load()
+	if src.player != nil {
+		src.player.combatTick = tick
+	}
 	dealt, _ := src.multipliers(tick)
 	_, taken := t.multipliers(tick)
 	amount := max(1, min(int(base*dealt*taken+0.5), t.hp))
@@ -138,7 +95,7 @@ func (z *Zone) grantExp(p *player, amount int64) {
 		leveled = true
 	}
 	if leveled {
-		p.e.maxHP = rules.MaxHP(p.e.level)
+		p.e.maxHP = z.maxHP(p, p.e.level)
 		p.e.hp = p.e.maxHP
 		z.log.Info("level up", "player", describe(p.e), "level", p.e.level)
 		z.save(p)

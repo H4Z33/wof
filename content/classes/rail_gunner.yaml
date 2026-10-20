@@ -1,0 +1,15 @@
+key: rail_gunner
+name: Rail Gunner
+world: brass
+archetype: ranger
+description: An engineer-soldier of the Brass realm. Builds Aether Charge with every hit and spends it on devastating shots.
+hp: { base: 100, per_level: 18 }
+resource:
+  key: aether_charge
+  name: Aether Charge
+  max: 100
+  start: 0
+  # Charge drains when out of combat instead of regenerating.
+  decay_per_s: 8
+  color: "#e0a23c"
+skills: [piston_shot, overcharge_shot, arc_grenade, stasis_coil]

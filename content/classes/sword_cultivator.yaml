@@ -1,0 +1,14 @@
+key: sword_cultivator
+name: Sword Cultivator
+world: jade
+archetype: warrior
+description: A cultivator of the Jade realm who refines qi through the sword. Strong up close, hard to kill.
+hp: { base: 120, per_level: 22 }
+resource:
+  key: qi
+  name: Qi
+  max: 100
+  start: 100
+  regen_per_s: 6
+  color: "#6fd6a8"
+skills: [jade_slash, flowing_strikes, sword_qi_wave, iron_meditation]

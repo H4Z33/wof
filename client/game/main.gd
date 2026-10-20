@@ -4,7 +4,7 @@
 ## Command-line options (after `--`), handy for testing several clients:
 ##   --server=http://127.0.0.1:7777
 ##   --user=alice --password=...   log in (registering first if needed)
-##   --character=Lin --model=zuo_mo   play this character, creating it if needed
+##   --character=Lin --model=zuo_mo --class=mystic   play this character, creating it if needed
 ##   --autoconnect      do all of the above without clicking
 ##   --window=x,y,w,h   place the window
 ##   --autowalk         walk in a circle (automated tests)
@@ -17,6 +17,7 @@ extends Node
 const PB := preload("res://gen/convergence/v1/world.pb.gd")
 const World := preload("res://game/world.gd")
 const Models := preload("res://game/models.gd")
+const ContentDB := preload("res://game/content_db.gd")
 
 var _opts := {}
 var _ui: CenterContainer
@@ -28,6 +29,8 @@ var _pass_edit: LineEdit
 var _char_list: VBoxContainer
 var _name_edit: LineEdit
 var _model_select: OptionButton
+var _class_select: OptionButton
+var _class_info: Label
 var _status: Label
 var _busy := false
 var _world: Node3D
@@ -93,7 +96,7 @@ func _do_create() -> void:
 	_busy = true
 	_status.text = "Creating character..."
 	var model: String = Models.keys()[_model_select.selected]
-	var err: String = await Net.create_character(_name_edit.text.strip_edges(), model)
+	var err: String = await Net.create_character(_name_edit.text.strip_edges(), model, _selected_class())
 	_busy = false
 	_status.text = err
 	if err.is_empty():
@@ -124,7 +127,7 @@ func _autoconnect() -> void:
 	var wanted: String = _opts.get("character", "")
 	var chosen := _find_character(wanted)
 	if chosen.is_empty() and not wanted.is_empty():
-		err = await Net.create_character(wanted, _opts.get("model", Models.DEFAULT_MODEL))
+		err = await Net.create_character(wanted, _opts.get("model", Models.DEFAULT_MODEL), _opts.get("class", "sword_cultivator"))
 		if not err.is_empty():
 			_status.text = err
 			return
@@ -220,7 +223,7 @@ func _show_characters() -> void:
 		_char_list.add_child(_label("No characters yet. Create one below."))
 	for c in Net.characters:
 		var row := HBoxContainer.new()
-		var info := _label("%s  ·  Lv %d  ·  %s" % [c["name"], int(c["level"]), Models.label(c["model"])])
+		var info := _label("%s  ·  Lv %d  ·  %s" % [c["name"], int(c["level"]), ContentDB.class_label(c.get("class", ""))])
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(info)
 		var play := Button.new()
@@ -301,6 +304,18 @@ func _build_ui() -> void:
 		_model_select.add_item(Models.label(keys[i]), i)
 	_model_select.selected = maxi(keys.find(_opts.get("model", Models.DEFAULT_MODEL)), 0)
 	_chars_box.add_child(_model_select)
+	_class_select = OptionButton.new()
+	for c in ContentDB.classes():
+		_class_select.add_item("%s  —  %s" % [c["name"], c["world_name"]])
+	_class_select.item_selected.connect(func(_i): _update_class_info())
+	_chars_box.add_child(_class_select)
+	_class_info = Label.new()
+	_class_info.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_class_info.custom_minimum_size = Vector2(400, 0)
+	_class_info.add_theme_font_size_override("font_size", 13)
+	_class_info.modulate = Color(0.85, 0.85, 0.9)
+	_chars_box.add_child(_class_info)
+	_update_class_info()
 	var create := Button.new()
 	create.text = "Create character"
 	create.pressed.connect(_do_create)
@@ -310,6 +325,26 @@ func _build_ui() -> void:
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_status.custom_minimum_size = Vector2(400, 0)
 	root.add_child(_status)
+
+
+func _selected_class() -> String:
+	var classes := ContentDB.classes()
+	if classes.is_empty() or _class_select.selected < 0:
+		return "sword_cultivator"
+	return classes[_class_select.selected]["key"]
+
+
+func _update_class_info() -> void:
+	var c := ContentDB.class_by_key(_selected_class())
+	if c.is_empty():
+		_class_info.text = ""
+		return
+	var names := PackedStringArray()
+	for s in c["skills"]:
+		names.append(s["name"])
+	_class_info.text = "%s
+Resource: %s  ·  HP %d
+Skills: %s" % [c["description"], c["resource"]["name"], int(c["hp"]), ", ".join(names)]
 
 
 func _label(text: String) -> Label:

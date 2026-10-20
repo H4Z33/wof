@@ -125,8 +125,16 @@ const EFFECT_COLORS := {
 	2: Color(0.7, 0.4, 1.0),  # weakened
 	4: Color(1.0, 0.2, 0.15),  # enraged
 	8: Color(0.35, 0.35, 0.45),  # ill omen
+	64: Color(1.0, 0.95, 0.3),  # stunned
+	32: Color(1.0, 0.45, 0.1),  # burning
+	16: Color(0.55, 0.8, 1.0),  # ward
+	128: Color(0.3, 0.85, 0.8),  # slowed
+	256: Color(0.4, 1.0, 0.5),  # regen
 }
-const EFFECT_NAMES := {1: "Vigor", 2: "Weakened", 4: "Enraged", 8: "Ill Omen"}
+const EFFECT_NAMES := {
+	1: "Vigor", 2: "Weakened", 4: "Enraged", 8: "Ill Omen", 16: "Ward",
+	32: "Burning", 64: "Stunned", 128: "Slowed", 256: "Regen",
+}
 
 var effects := 0
 var _aura: MeshInstance3D

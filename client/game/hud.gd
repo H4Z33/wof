@@ -11,6 +11,9 @@ var _target_hp: ProgressBar
 var _target_hp_text: Label
 var _hp_bar: ProgressBar
 var _hp_text: Label
+var _res_bar: ProgressBar
+var _res_text: Label
+var _res_name := "" 
 var _exp_bar: ProgressBar
 var _level_label: Label
 var _message: Label
@@ -32,10 +35,11 @@ signal skill_pressed(skill_id: int)
 
 func _ready() -> void:
 	debug_label = Label.new()
-	debug_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	debug_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	debug_label.offset_left = 12
-	debug_label.offset_bottom = -10
+	debug_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	debug_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	debug_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	debug_label.offset_right = -12
+	debug_label.offset_top = 8
 	debug_label.add_theme_font_size_override("font_size", 12)
 	debug_label.modulate = Color(1, 1, 1, 0.75)
 	_outline(debug_label)
@@ -102,6 +106,18 @@ func _ready() -> void:
 	_outline(_hp_text)
 	hp_stack.add_child(_hp_text)
 	bottom.add_child(hp_stack)
+	var res_stack := Control.new()
+	res_stack.custom_minimum_size = Vector2(360, 12)
+	_res_bar = _bar(Color(0.4, 0.6, 1.0), Vector2(360, 12))
+	res_stack.add_child(_res_bar)
+	_res_text = Label.new()
+	_res_text.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_res_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_res_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_res_text.add_theme_font_size_override("font_size", 10)
+	_outline(_res_text)
+	res_stack.add_child(_res_text)
+	bottom.add_child(res_stack)
 
 	var skills := HBoxContainer.new()
 	skills.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -170,7 +186,10 @@ func set_skills(skills: Array) -> void:
 	for i in skills.size():
 		var s: PB.SkillInfo = skills[i]
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(110, 44)
+		b.custom_minimum_size = Vector2(130, 44)
+		b.tooltip_text = "%s
+%s%s" % [s.name, s.description, ("
+Cost: %d" % s.cost) if s.cost > 0 else ""]
 		b.focus_mode = Control.FOCUS_NONE
 		b.pressed.connect(func(): skill_pressed.emit(s.id))
 		box.add_child(b)
@@ -179,12 +198,12 @@ func set_skills(skills: Array) -> void:
 		b.text = _skill_names[s.id]
 
 
-## remaining: skill id -> seconds left on cooldown.
-func update_cooldowns(remaining: Dictionary) -> void:
+## remaining: skill id -> seconds left on cooldown; affordable: skill id -> bool.
+func update_cooldowns(remaining: Dictionary, affordable := {}) -> void:
 	for id in _skill_buttons:
 		var b: Button = _skill_buttons[id]
 		var left: float = remaining.get(id, 0.0)
-		b.disabled = left > 0.0
+		b.disabled = left > 0.0 or not affordable.get(id, true)
 		b.text = _skill_names[id] if left <= 0.0 else "%s  %.1f" % [_skill_names[id], left]
 
 
@@ -196,6 +215,9 @@ func set_status(s: PB.PlayerStatus) -> void:
 	_exp_bar.value = s.exp
 	_level_label.text = "Level %d   ·   %d / %d exp" % [s.level, s.exp, s.exp_to_next]
 	_stats_label.text = "Luck %d   ·   Karma %+d" % [s.luck, s.karma]
+	_res_bar.max_value = maxi(s.resource_max, 1)
+	_res_bar.value = s.resource
+	_res_text.text = "%s %d / %d" % [_res_name, s.resource, s.resource_max]
 	if s.hp == 0:
 		_death.text = "You died. Respawning in %d..." % ceili(s.respawn_in_ms / 1000.0)
 		_death.show()
@@ -236,6 +258,17 @@ func show_fate(ev: PB.FateEvent, effect_text: String) -> void:
 	_fate_tween.tween_interval(6.0)
 	_fate_tween.tween_property(_fate_panel, "modulate:a", 0.0, 1.0)
 	_fate_tween.tween_callback(_fate_panel.hide)
+
+
+## Shows the class resource bar in the class's color.
+func set_class(info: PB.ClassInfo) -> void:
+	if info == null:
+		_res_bar.get_parent().hide()
+		return
+	_res_name = info.resource_name
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color.html(info.resource_color) if info.resource_color.begins_with("#") else Color(0.4, 0.6, 1.0)
+	_res_bar.add_theme_stylebox_override("fill", fill)
 
 
 func set_inventory(items: Array) -> void:

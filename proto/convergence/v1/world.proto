@@ -7,7 +7,7 @@ option go_package = "convergence/server/gen/convergence/v1;convergencev1";
 // Bump when a change breaks older clients. The server rejects mismatches in Hello.
 enum ProtocolVersion {
   PROTOCOL_VERSION_UNSPECIFIED = 0;
-  PROTOCOL_VERSION_CURRENT = 5;
+  PROTOCOL_VERSION_CURRENT = 6;
 }
 
 enum FateOmen {
@@ -31,6 +31,11 @@ enum EffectFlag {
   EFFECT_FLAG_WEAKENED = 2;  // takes more damage
   EFFECT_FLAG_ENRAGED = 4;   // deals more damage (enemy)
   EFFECT_FLAG_ILL_OMEN = 8;  // deals less damage
+  EFFECT_FLAG_WARD = 16;     // takes less damage
+  EFFECT_FLAG_BURNING = 32;  // damage over time
+  EFFECT_FLAG_STUNNED = 64;  // cannot act
+  EFFECT_FLAG_SLOWED = 128;  // moves slower
+  EFFECT_FLAG_REGEN = 256;   // heals over time
 }
 
 enum CombatEventKind {
@@ -41,6 +46,8 @@ enum CombatEventKind {
   COMBAT_EVENT_KIND_DEATH = 2;
   // The attack missed (amount = 0).
   COMBAT_EVENT_KIND_MISS = 3;
+  // amount = health restored.
+  COMBAT_EVENT_KIND_HEAL = 4;
 }
 
 message Vec3 {
@@ -125,6 +132,17 @@ message Welcome {
   repeated InventoryItem inventory = 11;
   // Absent for a flat zone.
   TerrainInfo terrain = 12;
+  ClassInfo class_info = 13;
+}
+
+message ClassInfo {
+  string key = 1;
+  string name = 2;
+  // jade, brass or myth.
+  string world = 3;
+  string resource_name = 4;
+  // "#rrggbb".
+  string resource_color = 5;
 }
 
 // The heightmap and walking rules the client needs to predict movement
@@ -156,6 +174,14 @@ message SkillInfo {
   string anim = 5;
   // Draw a projectile from caster to target.
   bool projectile = 6;
+  string description = 7;
+  uint32 cost = 8;
+  // Self skills need no target.
+  bool target_self = 9;
+  // Client effect key (client/game/vfx.gd).
+  string vfx = 10;
+  // Area radius around the target, if any.
+  float radius = 11;
 }
 
 message PlayerStatus {
@@ -168,6 +194,8 @@ message PlayerStatus {
   uint32 respawn_in_ms = 6;
   uint32 luck = 7;
   sint32 karma = 8;
+  uint32 resource = 9;
+  uint32 resource_max = 10;
 }
 
 message EntityState {
@@ -189,6 +217,8 @@ message EntitySpawn {
   EntityState state = 4;
   EntityKind kind = 5;
   uint32 level = 6;
+  // Players: their class key.
+  string class_key = 7;
 }
 
 message CombatEvent {
@@ -236,7 +266,8 @@ message FateEvent {
 
 message SkillRejected {
   uint32 skill_id = 1;
-  // Machine-readable: cooldown, out_of_range, invalid_target, dead, unknown_skill.
+  // Machine-readable: cooldown, out_of_range, invalid_target, dead,
+  // unknown_skill, not_enough_resource, stunned.
   string reason = 2;
 }
 

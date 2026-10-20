@@ -25,6 +25,8 @@ const REJECT_TEXT := {
 	"invalid_target": "Invalid target",
 	"dead": "You are dead",
 	"unknown_skill": "Unknown skill",
+	"not_enough_resource": "Not enough energy",
+	"stunned": "You are stunned",
 }
 
 ## Test options.
@@ -85,6 +87,7 @@ func start(welcome: PB.Welcome) -> void:
 	_hud = Hud.new()
 	add_child(_hud)
 	_hud.set_skills(welcome.skills)
+	_hud.set_class(welcome.class_info)
 	if not _hud_warning.is_empty():
 		_hud.show_message(_hud_warning, Color(1, 0.4, 0.35))
 	_hud.skill_pressed.connect(use_skill)
@@ -140,7 +143,7 @@ func _read_input() -> Vector2:
 		var target: Character = _entities.get(_target_id)
 		if target != null and target.is_alive():
 			var to := Vector2(target.global_position.x - _pred_pos.x, target.global_position.z - _pred_pos.z)
-			return to.normalized() if to.length() > 1.8 else Vector2.ZERO
+			return to.normalized() if to.length() > _autofight_range() else Vector2.ZERO
 	if autowalk:
 		var t := Time.get_ticks_msec() / 1000.0 * 0.6
 		return Vector2(cos(t), sin(t))
@@ -278,6 +281,16 @@ func use_skill(skill_id: int) -> void:
 	var s: PB.SkillInfo = _skills.get(skill_id)
 	if s == null or _is_dead():
 		return
+	if _status != null and _status.resource < s.cost:
+		_hud.show_message("Not enough energy", Color(0.6, 0.75, 1.0))
+		return
+	if s.target_self:
+		if Time.get_ticks_msec() < _ready_at.get(skill_id, 0):
+			_hud.show_message("Not ready yet", Color(0.8, 0.8, 0.8))
+			return
+		_ready_at[skill_id] = Time.get_ticks_msec() + s.cooldown_ms
+		Net.send_skill(skill_id, 0)
+		return
 	var target: Character = _entities.get(_target_id)
 	if target == null or not target.is_npc():
 		_hud.show_message("Select an enemy first (click or Tab)", Color(1, 0.85, 0.5))
@@ -300,6 +313,16 @@ func _on_skill_rejected(skill_id: int, reason: String) -> void:
 	_hud.show_message(REJECT_TEXT.get(reason, reason), Color(1, 0.6, 0.5))
 
 
+## How close autofight walks: within the shortest enemy skill's range.
+func _autofight_range() -> float:
+	var r := 1000.0
+	for id in _skill_order:
+		var s: PB.SkillInfo = _skills[id]
+		if not s.target_self:
+			r = minf(r, s.range)
+	return maxf(1.5, r * 0.75) if r < 1000.0 else 1.8
+
+
 ## Test option: target the nearest enemy, walk to it and use skills.
 func _autofight() -> void:
 	var target: Character = _entities.get(_target_id)
@@ -309,7 +332,12 @@ func _autofight() -> void:
 	var now := Time.get_ticks_msec()
 	for id in _skill_order:
 		var s: PB.SkillInfo = _skills[id]
-		if now >= _ready_at.get(id, 0) and target.global_position.distance_to(_pred_pos) <= s.range:
+		if now < _ready_at.get(id, 0) or (_status != null and _status.resource < s.cost):
+			continue
+		if s.target_self:
+			if _status != null and _status.hp < _status.max_hp * 0.6:
+				use_skill(id)
+		elif target.global_position.distance_to(_pred_pos) <= s.range:
 			use_skill(id)
 
 
@@ -384,6 +412,12 @@ func _on_combat_event(ev: PB.CombatEvent) -> void:
 				_fire_projectile(src, dst, func(): _land_hit(dst, amount, color))
 			else:
 				_land_hit(dst, amount, color)
+		PB.CombatEventKind.COMBAT_EVENT_KIND_HEAL:
+			var heal_skill: PB.SkillInfo = _skills.get(ev.skill_id)
+			if src != null and src == dst and heal_skill != null:
+				src.play_action(heal_skill.anim)
+			if dst != null:
+				dst.show_number("+%d" % ev.amount, Color(0.45, 1.0, 0.5))
 		PB.CombatEventKind.COMBAT_EVENT_KIND_MISS:
 			if src != null:
 				var miss_skill: PB.SkillInfo = _skills.get(ev.skill_id)
@@ -498,7 +532,10 @@ func _update_target_visuals() -> void:
 	var remaining := {}
 	for id in _ready_at:
 		remaining[id] = maxf(0.0, (_ready_at[id] - now) / 1000.0)
-	_hud.update_cooldowns(remaining)
+	var affordable := {}
+	for id in _skills:
+		affordable[id] = _status == null or _status.resource >= _skills[id].cost
+	_hud.update_cooldowns(remaining, affordable)
 
 
 func _update_hud() -> void:

@@ -1,19 +1,168 @@
-# Player skills. M1 skills are pure data (damage in a range); Lua-scripted
-# skills arrive with the class system in M2.
+# Player skills, grouped by class in content/classes. A skill is data
+# (damage, heal, area, effects) or, for unusual mechanics, a Lua script
+# (content/skills/*.lua) that receives a context with the same powers.
+#
+# Fields:
+#   target: enemy (an NPC within range) or self
+#   cost: resource spent on use; gain: resource gained when it hits
+#   damage / heal: [min, max] before level scaling
+#   radius: area around the target (enemy) that is also hit
+#   heal_radius: self skills also heal players this close
+#   apply: an effect on each target hit (or on self for self skills):
+#     weakened, vigor, ward, burning, regen, stunned, slowed
+#   vfx: client effect key (client/game/vfx.gd)
 skills:
-  - id: 1
-    key: strike
-    name: Strike
-    range: 2.5
-    cooldown_ms: 1200
-    damage: [8, 12]
+  # --- Sword Cultivator (Jade realm) -------------------------------------
+  - id: 101
+    key: jade_slash
+    name: Jade Slash
+    description: A swift cut of the jade blade.
+    target: enemy
+    range: 2.6
+    cooldown_ms: 1000
+    damage: [9, 13]
+    anim: Sword_Attack
+    vfx: slash
+  - id: 102
+    key: flowing_strikes
+    name: Flowing Strikes
+    description: Three strikes that flow like water.
+    target: enemy
+    range: 2.6
+    cooldown_ms: 6000
+    cost: 25
     anim: Punch_Cross
-
-  - id: 2
-    key: qi_bolt
-    name: Qi Bolt
-    range: 20
-    cooldown_ms: 3000
-    damage: [14, 20]
-    anim: Spell_Simple_Shoot
+    vfx: slash
+    script: skills/flowing_strikes.lua
+    params:
+      hits: 3
+      min: 5
+      max: 8
+  - id: 103
+    key: sword_qi_wave
+    name: Sword Qi Wave
+    description: A crescent of sword qi that cuts everything around the target.
+    target: enemy
+    range: 10
+    cooldown_ms: 10000
+    cost: 35
+    damage: [12, 16]
+    radius: 4
+    anim: Sword_Attack
+    vfx: wave
     projectile: true
+  - id: 104
+    key: iron_meditation
+    name: Iron Body Meditation
+    description: Harden the body and mend wounds; damage taken is reduced.
+    target: self
+    cooldown_ms: 20000
+    cost: 30
+    heal: [12, 18]
+    apply: { effect: ward, duration_s: 8, value: 0.6 }
+    anim: Spell_Simple_Shoot
+    vfx: ward
+
+  # --- Rail Gunner (Brass realm) -----------------------------------------
+  - id: 201
+    key: piston_shot
+    name: Piston Shot
+    description: A steam-driven slug. Builds Aether Charge.
+    target: enemy
+    range: 22
+    cooldown_ms: 1300
+    damage: [8, 11]
+    gain: 20
+    anim: Pistol_Shoot
+    vfx: bullet
+    projectile: true
+  - id: 202
+    key: overcharge_shot
+    name: Overcharge Shot
+    description: Pours all Aether Charge into one shot. Needs 25 charge.
+    target: enemy
+    range: 22
+    cooldown_ms: 8000
+    anim: Pistol_Shoot
+    vfx: beam
+    projectile: true
+    script: skills/overcharge_shot.lua
+    params:
+      min_charge: 25
+      min: 10
+      max: 14
+  - id: 203
+    key: arc_grenade
+    name: Arc Grenade
+    description: Explodes around the target and sets it ablaze.
+    target: enemy
+    range: 18
+    cooldown_ms: 12000
+    cost: 30
+    damage: [10, 14]
+    radius: 4
+    apply: { effect: burning, duration_s: 5, value: 3 }
+    anim: Pistol_Shoot
+    vfx: explosion
+    projectile: true
+  - id: 204
+    key: stasis_coil
+    name: Stasis Coil
+    description: A humming coil that slows the target.
+    target: enemy
+    range: 18
+    cooldown_ms: 10000
+    cost: 20
+    damage: [4, 6]
+    apply: { effect: slowed, duration_s: 6, value: 0.5 }
+    anim: Pistol_Shoot
+    vfx: coil
+    projectile: true
+
+  # --- Mystic (Myth realm) ------------------------------------------------
+  - id: 301
+    key: spirit_lance
+    name: Spirit Lance
+    description: A lance of spirit light.
+    target: enemy
+    range: 18
+    cooldown_ms: 1500
+    damage: [9, 12]
+    anim: Spell_Simple_Shoot
+    vfx: lance
+    projectile: true
+  - id: 302
+    key: divine_rebuke
+    name: Divine Rebuke
+    description: The heavens strike the target, stunning it.
+    target: enemy
+    range: 15
+    cooldown_ms: 14000
+    cost: 30
+    damage: [6, 9]
+    apply: { effect: stunned, duration_s: 2.5, value: 1 }
+    anim: Spell_Simple_Shoot
+    vfx: smite
+  - id: 303
+    key: blessing_of_dawn
+    name: Blessing of Dawn
+    description: Heals you and nearby cultivators, then keeps healing.
+    target: self
+    cooldown_ms: 15000
+    cost: 35
+    heal: [25, 35]
+    heal_radius: 8
+    apply: { effect: regen, duration_s: 8, value: 4 }
+    anim: Spell_Simple_Shoot
+    vfx: heal
+  - id: 304
+    key: mark_of_judgment
+    name: Mark of Judgment
+    description: Marks the target; it takes more damage from everyone.
+    target: enemy
+    range: 18
+    cooldown_ms: 12000
+    cost: 20
+    apply: { effect: weakened, duration_s: 10, value: 1.3 }
+    anim: Spell_Simple_Shoot
+    vfx: mark

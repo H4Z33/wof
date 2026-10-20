@@ -16,15 +16,78 @@ import (
 type Range [2]int
 
 type Skill struct {
-	ID         uint32  `yaml:"id"`
-	Key        string  `yaml:"key"`
-	Name       string  `yaml:"name"`
-	Range      float64 `yaml:"range"`
-	CooldownMS int     `yaml:"cooldown_ms"`
-	Damage     Range   `yaml:"damage"`
-	Anim       string  `yaml:"anim"`
-	Projectile bool    `yaml:"projectile"`
+	ID          uint32             `yaml:"id"`
+	Key         string             `yaml:"key"`
+	Name        string             `yaml:"name"`
+	Description string             `yaml:"description"`
+	Target      string             `yaml:"target"` // enemy or self
+	Range       float64            `yaml:"range"`
+	CooldownMS  int                `yaml:"cooldown_ms"`
+	Cost        int                `yaml:"cost"`
+	Gain        int                `yaml:"gain"`
+	Damage      Range              `yaml:"damage"`
+	Heal        Range              `yaml:"heal"`
+	Radius      float64            `yaml:"radius"`
+	HealRadius  float64            `yaml:"heal_radius"`
+	Apply       *SkillEffect       `yaml:"apply"`
+	Anim        string             `yaml:"anim"`
+	VFX         string             `yaml:"vfx"`
+	Projectile  bool               `yaml:"projectile"`
+	Script      string             `yaml:"script"`
+	Params      map[string]float64 `yaml:"params"`
+
+	// ScriptSource is the Lua text of Script.
+	ScriptSource string `yaml:"-"`
 }
+
+// SkillEffect is a timed effect a skill applies.
+type SkillEffect struct {
+	Effect    string  `yaml:"effect"`
+	DurationS float64 `yaml:"duration_s"`
+	// Meaning depends on the effect: a multiplier (weakened 1.3, ward 0.6,
+	// slowed 0.5) or an amount per second (burning, regen).
+	Value float64 `yaml:"value"`
+}
+
+// SkillEffects are the effect names skills may apply.
+var SkillEffects = map[string]bool{
+	"weakened": true, "vigor": true, "ward": true, "burning": true, "regen": true, "stunned": true, "slowed": true,
+}
+
+// Class is a playable class: one archetype in one world.
+type Class struct {
+	Key         string `yaml:"key"`
+	Name        string `yaml:"name"`
+	World       string `yaml:"world"`
+	Archetype   string `yaml:"archetype"`
+	Description string `yaml:"description"`
+	HP          struct {
+		Base     int `yaml:"base"`
+		PerLevel int `yaml:"per_level"`
+	} `yaml:"hp"`
+	Resource struct {
+		Key       string  `yaml:"key"`
+		Name      string  `yaml:"name"`
+		Max       int     `yaml:"max"`
+		Start     int     `yaml:"start"`
+		RegenPerS float64 `yaml:"regen_per_s"`
+		DecayPerS float64 `yaml:"decay_per_s"`
+		Color     string  `yaml:"color"`
+	} `yaml:"resource"`
+	Skills []string `yaml:"skills"`
+
+	// SkillIDs resolves Skills, in order.
+	SkillIDs []uint32 `yaml:"-"`
+}
+
+// MaxHP is the class's maximum health at a level.
+func (c *Class) MaxHP(level int) int { return c.HP.Base + c.HP.PerLevel*(level-1) }
+
+// Worlds are the three colliding realms.
+var Worlds = map[string]string{"jade": "Jade Realm", "brass": "Brass Realm", "myth": "Myth Realm"}
+
+// DefaultClass is given to characters created before classes existed.
+const DefaultClass = "sword_cultivator"
 
 type NPCAttack struct {
 	Damage     Range  `yaml:"damage"`
@@ -163,14 +226,34 @@ type Content struct {
 	NPCs   map[string]*NPC
 	Zones  map[string]*Zone
 	Items  map[string]*Item
+	// Classes by key; empty when content/classes is absent.
+	Classes map[string]*Class
 	// Fate is nil when content/fate.yaml is absent.
 	Fate *Fate
+}
+
+// SkillByKey finds a skill by its key.
+func (c *Content) SkillByKey(key string) *Skill {
+	for _, s := range c.Skills {
+		if s.Key == key {
+			return s
+		}
+	}
+	return nil
+}
+
+// Class returns the class, or the default one for unknown keys.
+func (c *Content) Class(key string) *Class {
+	if cl, ok := c.Classes[key]; ok {
+		return cl
+	}
+	return c.Classes[DefaultClass]
 }
 
 // Load reads dir/skills.yaml, dir/npcs/*.yaml, dir/zones/*.yaml and the AI
 // scripts they reference.
 func Load(dir string) (*Content, error) {
-	c := &Content{Skills: map[uint32]*Skill{}, NPCs: map[string]*NPC{}, Zones: map[string]*Zone{}, Items: map[string]*Item{}}
+	c := &Content{Skills: map[uint32]*Skill{}, NPCs: map[string]*NPC{}, Zones: map[string]*Zone{}, Items: map[string]*Item{}, Classes: map[string]*Class{}}
 
 	var skills struct {
 		Skills []*Skill `yaml:"skills"`
@@ -182,7 +265,23 @@ func Load(dir string) (*Content, error) {
 		if _, dup := c.Skills[s.ID]; dup {
 			return nil, fmt.Errorf("skills.yaml: duplicate skill id %d", s.ID)
 		}
+		if s.Script != "" {
+			src, err := os.ReadFile(filepath.Join(dir, s.Script))
+			if err != nil {
+				return nil, fmt.Errorf("skill %s: script: %w", s.Key, err)
+			}
+			s.ScriptSource = string(src)
+		}
 		c.Skills[s.ID] = s
+	}
+
+	classFiles, _ := filepath.Glob(filepath.Join(dir, "classes", "*.yaml"))
+	for _, f := range classFiles {
+		cl := &Class{}
+		if err := readYAML(f, cl); err != nil {
+			return nil, err
+		}
+		c.Classes[cl.Key] = cl
 	}
 
 	npcFiles, _ := filepath.Glob(filepath.Join(dir, "npcs", "*.yaml"))
@@ -232,8 +331,42 @@ func Load(dir string) (*Content, error) {
 func (c *Content) validate() error {
 	var errs []error
 	for id, s := range c.Skills {
-		if s.Range <= 0 || s.CooldownMS <= 0 || s.Damage[0] <= 0 || s.Damage[1] < s.Damage[0] {
-			errs = append(errs, fmt.Errorf("skill %d (%s): range, cooldown and damage must be positive", id, s.Key))
+		switch {
+		case s.Target != "enemy" && s.Target != "self":
+			errs = append(errs, fmt.Errorf("skill %d (%s): target must be enemy or self", id, s.Key))
+		case s.Target == "enemy" && s.Range <= 0:
+			errs = append(errs, fmt.Errorf("skill %d (%s): enemy skills need a range", id, s.Key))
+		case s.CooldownMS <= 0:
+			errs = append(errs, fmt.Errorf("skill %d (%s): cooldown must be positive", id, s.Key))
+		case s.Damage[1] < s.Damage[0] || s.Heal[1] < s.Heal[0] || s.Cost < 0:
+			errs = append(errs, fmt.Errorf("skill %d (%s): bad damage, heal or cost", id, s.Key))
+		case s.Script == "" && s.Damage[1] == 0 && s.Heal[1] == 0 && s.Apply == nil:
+			errs = append(errs, fmt.Errorf("skill %d (%s): does nothing (no damage, heal, apply or script)", id, s.Key))
+		}
+		if s.Apply != nil && (!SkillEffects[s.Apply.Effect] || s.Apply.DurationS <= 0) {
+			errs = append(errs, fmt.Errorf("skill %d (%s): unknown effect %q or no duration", id, s.Key, s.Apply.Effect))
+		}
+	}
+	for key, cl := range c.Classes {
+		if _, ok := Worlds[cl.World]; !ok {
+			errs = append(errs, fmt.Errorf("class %s: unknown world %q", key, cl.World))
+		}
+		if cl.HP.Base <= 0 || cl.Resource.Max <= 0 || len(cl.Skills) == 0 {
+			errs = append(errs, fmt.Errorf("class %s: needs hp, a resource and skills", key))
+		}
+		cl.SkillIDs = cl.SkillIDs[:0]
+		for _, sk := range cl.Skills {
+			s := c.SkillByKey(sk)
+			if s == nil {
+				errs = append(errs, fmt.Errorf("class %s: unknown skill %q", key, sk))
+				continue
+			}
+			cl.SkillIDs = append(cl.SkillIDs, s.ID)
+		}
+	}
+	if len(c.Classes) > 0 {
+		if _, ok := c.Classes[DefaultClass]; !ok {
+			errs = append(errs, fmt.Errorf("default class %q is missing", DefaultClass))
 		}
 	}
 	for key, n := range c.NPCs {

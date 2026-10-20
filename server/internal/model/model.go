@@ -8,6 +8,7 @@ type Character struct {
 	AccountID int64
 	Name      string
 	Model     string
+	Class     string
 	ZoneID    string
 	Pos       [3]float64
 	Yaw       float64

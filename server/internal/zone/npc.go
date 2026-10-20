@@ -83,7 +83,7 @@ func (z *Zone) thinkNPCs(tick uint32) {
 	defer z.lua.EndTick()
 	every := uint32(max(z.cfg.ThinkEvery, 1))
 	for _, n := range z.npcs {
-		if !n.e.alive() || (tick+n.e.id)%every != 0 {
+		if !n.e.alive() || (tick+n.e.id)%every != 0 || n.e.stunned(tick) {
 			continue
 		}
 		if err := z.lua.Think(n.brain); err != nil {
@@ -158,7 +158,7 @@ func (n *npc) Attack(id uint32) bool {
 	z := n.z
 	tick := z.tick.Load()
 	t, ok := z.entities[id]
-	if !ok || t.player == nil || !t.alive() || !n.e.alive() || tick < n.nextAttack {
+	if !ok || t.player == nil || !t.alive() || !n.e.alive() || tick < n.nextAttack || n.e.stunned(tick) {
 		return false
 	}
 	if hdist(n.e.pos, t.pos) > n.def.Stats["attack_range"]+0.5 {

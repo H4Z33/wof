@@ -272,7 +272,7 @@ func TestSpawnWithinRadius(t *testing.T) {
 // --- Combat ------------------------------------------------------------------
 
 func strike(z *Zone, p *player, target uint32) {
-	z.useSkill(p, &pb.UseSkill{SkillId: 1, TargetId: target})
+	z.useSkill(p, &pb.UseSkill{SkillId: 101, TargetId: target}) // Jade Slash
 }
 
 func TestStrikeKillsNPCAndGrantsExp(t *testing.T) {

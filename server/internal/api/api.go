@@ -33,9 +33,11 @@ type Server struct {
 	Sessions *auth.Store[int64]
 	Tickets  *auth.Store[model.Character]
 	Models   map[string]bool
-	Start    NewCharacter
-	WSPath   string
-	Log      *slog.Logger
+	// Classes a new character may pick (key -> max HP at level 1).
+	Classes map[string]int
+	Start   NewCharacter
+	WSPath  string
+	Log     *slog.Logger
 	// AuthBurst is how many register/login requests one IP may make at once
 	// (refilling at one per second). Zero means 10.
 	AuthBurst int
@@ -70,12 +72,13 @@ type characterJSON struct {
 	ZoneID string `json:"zone_id"`
 	Luck   int    `json:"luck"`
 	Karma  int    `json:"karma"`
+	Class  string `json:"class"`
 }
 
 func toJSON(cs []model.Character) []characterJSON {
 	out := make([]characterJSON, 0, len(cs))
 	for _, c := range cs {
-		out = append(out, characterJSON{ID: c.ID, Name: c.Name, Model: c.Model, Level: c.Level, ZoneID: c.ZoneID, Luck: c.Luck, Karma: c.Karma})
+		out = append(out, characterJSON{ID: c.ID, Name: c.Name, Model: c.Model, Level: c.Level, ZoneID: c.ZoneID, Luck: c.Luck, Karma: c.Karma, Class: c.Class})
 	}
 	return out
 }
@@ -144,6 +147,7 @@ func (s *Server) createCharacter(w http.ResponseWriter, r *http.Request, account
 	var req struct {
 		Name  string `json:"name"`
 		Model string `json:"model"`
+		Class string `json:"class"`
 	}
 	if !decode(w, r, &req) {
 		return
@@ -156,14 +160,20 @@ func (s *Server) createCharacter(w http.ResponseWriter, r *http.Request, account
 		fail(w, http.StatusBadRequest, "Unknown character model.")
 		return
 	}
+	hp, ok := s.Classes[req.Class]
+	if !ok {
+		fail(w, http.StatusBadRequest, "Unknown class.")
+		return
+	}
 	c, err := s.Accounts.CreateCharacter(r.Context(), model.Character{
 		AccountID: accountID,
 		Name:      req.Name,
 		Model:     req.Model,
+		Class:     req.Class,
 		ZoneID:    s.Start.ZoneID,
 		Pos:       s.Start.Spawn,
 		Level:     1,
-		HP:        rules.MaxHP(1),
+		HP:        hp,
 		Luck:      rules.RollLuck(),
 	})
 	switch {

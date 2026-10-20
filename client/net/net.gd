@@ -44,9 +44,9 @@ func login(server: String, username: String, password: String) -> String:
 	return res["error"]
 
 
-func create_character(char_name: String, model: String) -> String:
+func create_character(char_name: String, model: String, class_key: String) -> String:
 	var res := await _request(server_url, HTTPClient.METHOD_POST, "/api/v1/characters",
-			{"name": char_name, "model": model})
+			{"name": char_name, "model": model, "class": class_key})
 	if res["error"].is_empty():
 		characters.append(res["data"]["character"])
 	return res["error"]

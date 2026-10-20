@@ -23,4 +23,11 @@ try {
 } finally {
     Pop-Location
 }
-Write-Host "Generated server/gen and client/gen"
+Push-Location (Join-Path $root "server")
+try {
+    go run ./cmd/contentc
+    if ($LASTEXITCODE -ne 0) { throw "content validation failed" }
+} finally {
+    Pop-Location
+}
+Write-Host "Generated server/gen and client/gen (protocol and content bundle)"

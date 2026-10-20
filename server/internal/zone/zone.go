@@ -14,7 +14,6 @@ import (
 	"math"
 	"math/rand/v2"
 	"path/filepath"
-	"sort"
 	"sync/atomic"
 	"time"
 
@@ -166,7 +165,6 @@ type Zone struct {
 	grid     *grid
 	lua      *script.Engine
 	events   []*pb.CombatEvent
-	skills   []*pb.SkillInfo
 	nextID   uint32
 	fate     FateDirector
 	places   []place
@@ -212,13 +210,10 @@ func New(cfg Config, c *content.Content, zc *content.Zone, saver Saver, log *slo
 	var seed [8]byte
 	crand.Read(seed[:])
 	z.fateSecret = binary.LittleEndian.Uint64(seed[:])
-	for _, s := range c.Skills {
-		z.skills = append(z.skills, &pb.SkillInfo{
-			Id: s.ID, Name: s.Name, Range: float32(s.Range), CooldownMs: uint32(s.CooldownMS),
-			Anim: s.Anim, Projectile: s.Projectile,
-		})
+	if err := z.loadSkillScripts(); err != nil {
+		z.lua.Close()
+		return nil, err
 	}
-	sort.Slice(z.skills, func(i, j int) bool { return z.skills[i].Id < z.skills[j].Id })
 	if zc != nil {
 		if err := z.spawnGroups(zc); err != nil {
 			z.lua.Close()
@@ -325,6 +320,8 @@ func (z *Zone) handleCmd(cmd any) {
 		c.reply <- joinResult{handle: h, err: err}
 	case fate.Deck:
 		z.receiveDeck(c)
+	case reloadReq:
+		z.applyReload(c.c)
 	case leaveReq:
 		if p, ok := z.players[c.id]; ok {
 			z.removePlayer(p)
@@ -351,6 +348,7 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		return nil, ErrZoneFull
 	}
 	level := max(c.Level, 1)
+	class := z.content.Class(c.Class)
 	e := &entity{
 		id:    z.newID(),
 		kind:  pb.EntityKind_ENTITY_KIND_PLAYER,
@@ -361,6 +359,9 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		yaw:   c.Yaw,
 		hp:    c.HP,
 		maxHP: rules.MaxHP(level),
+	}
+	if class != nil {
+		e.maxHP = class.MaxHP(level)
 	}
 	if c.ZoneID != z.cfg.ID || !z.inBounds(e.pos) || !z.standable(e.pos) {
 		e.pos = z.spawnPoint()
@@ -387,6 +388,10 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		luck:      c.Luck,
 		karma:     c.Karma,
 		inventory: maps.Clone(c.Inventory),
+		class:     class,
+	}
+	if class != nil {
+		p.resource = float64(class.Resource.Start)
 	}
 	if p.inventory == nil {
 		p.inventory = make(map[string]int)
@@ -407,7 +412,8 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		Spawn:         vec(e.pos),
 		HalfExtent:    float32(z.cfg.HalfExtent),
 		Terrain:       z.terrainInfo(),
-		Skills:        z.skills,
+		Skills:        z.skillInfos(p),
+		ClassInfo:     classInfo(class),
 		Status:        z.status(p),
 		CharacterName: c.Name,
 		Inventory:     z.inventoryList(p),
@@ -433,6 +439,7 @@ func (z *Zone) record(p *player) model.Character {
 		AccountID: p.accountID,
 		Name:      p.e.name,
 		Model:     p.e.model,
+		Class:     p.classKey(),
 		ZoneID:    z.cfg.ID,
 		Pos:       p.e.pos,
 		Yaw:       p.e.yaw,
@@ -479,6 +486,8 @@ func (z *Zone) step() {
 	for _, n := range z.npcs {
 		z.moveNPC(n, dt)
 	}
+	z.updateResources(tick)
+	z.tickEffects(tick)
 	z.updateLife(tick)
 	z.updateFate(tick)
 	z.replicate(tick)

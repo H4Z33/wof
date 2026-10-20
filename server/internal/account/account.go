@@ -80,11 +80,11 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 	return id, nil
 }
 
-const characterColumns = `id, account_id, name, model, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp, luck, karma, inventory`
+const characterColumns = `id, account_id, name, model, class, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp, luck, karma, inventory`
 
 func scanCharacter(row pgx.Row) (model.Character, error) {
 	var c model.Character
-	err := row.Scan(&c.ID, &c.AccountID, &c.Name, &c.Model, &c.ZoneID,
+	err := row.Scan(&c.ID, &c.AccountID, &c.Name, &c.Model, &c.Class, &c.ZoneID,
 		&c.Pos[0], &c.Pos[1], &c.Pos[2], &c.Yaw, &c.Level, &c.Exp, &c.HP, &c.Luck, &c.Karma, &c.Inventory)
 	return c, err
 }
@@ -137,9 +137,9 @@ func (s *Service) CreateCharacter(ctx context.Context, c model.Character) (model
 		return c, ErrTooManyCharacters
 	}
 	err = tx.QueryRow(ctx,
-		`INSERT INTO characters (account_id, name, model, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp, luck, karma, inventory)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
-		c.AccountID, c.Name, c.Model, c.ZoneID, c.Pos[0], c.Pos[1], c.Pos[2], c.Yaw, c.Level, c.Exp, c.HP,
+		`INSERT INTO characters (account_id, name, model, class, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp, luck, karma, inventory)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+		c.AccountID, c.Name, c.Model, c.Class, c.ZoneID, c.Pos[0], c.Pos[1], c.Pos[2], c.Yaw, c.Level, c.Exp, c.HP,
 		c.Luck, c.Karma, inventoryJSON(c.Inventory),
 	).Scan(&c.ID)
 	if isUniqueViolation(err) {

@@ -1,0 +1,14 @@
+key: mystic
+name: Mystic
+world: myth
+archetype: leader
+description: A voice of the gods of the Myth realm. Heals allies, stuns and marks foes for the kill.
+hp: { base: 95, per_level: 17 }
+resource:
+  key: divine_favor
+  name: Divine Favor
+  max: 100
+  start: 100
+  regen_per_s: 5
+  color: "#b39dff"
+skills: [spirit_lance, divine_rebuke, blessing_of_dawn, mark_of_judgment]

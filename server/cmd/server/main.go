@@ -45,6 +45,7 @@ func main() {
 	flag.StringVar(&opts.fateModel, "fate-model", "deepseek-v4.1-flash:cloud", "Ollama model for the Fate agent; empty disables the agent (fallback cards only)")
 	flag.StringVar(&opts.fateURL, "fate-url", "http://127.0.0.1:11434", "Ollama base URL")
 	flag.DurationVar(&opts.fateTimeout, "fate-timeout", 30*time.Second, "time limit for one Fate deal")
+	flag.BoolVar(&opts.dev, "dev", false, "development mode: reload content (YAML and Lua) when files change")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -58,6 +59,7 @@ type options struct {
 	fateModel   string
 	fateURL     string
 	fateTimeout time.Duration
+	dev         bool
 }
 
 func run(addr, contentDir string, authBurst int, opts options, log *slog.Logger) error {
@@ -111,6 +113,10 @@ func run(addr, contentDir string, authBurst int, opts options, log *slog.Logger)
 		z.SetFate(director)
 	}
 	go z.Run(ctx)
+	if opts.dev {
+		go zone.WatchContent(ctx, contentDir, z, log)
+		log.Info("dev mode: watching content for changes", "dir", contentDir)
+	}
 	defer func() { <-z.Done() }()
 
 	tickets := auth.NewStore[model.Character](60 * time.Second)
@@ -120,6 +126,7 @@ func run(addr, contentDir string, authBurst int, opts options, log *slog.Logger)
 		Sessions:  auth.NewStore[int64](time.Hour),
 		Tickets:   tickets,
 		Models:    playerModels,
+		Classes:   classHP(c),
 		Start:     api.NewCharacter{ZoneID: zc.ID, Spawn: z.Config().Spawn},
 		WSPath:    "/ws",
 		Log:       log,
@@ -141,6 +148,15 @@ func run(addr, contentDir string, authBurst int, opts options, log *slog.Logger)
 		return err
 	}
 	return nil
+}
+
+// classHP lists the playable classes with their level-1 health.
+func classHP(c *content.Content) map[string]int {
+	out := map[string]int{}
+	for key, cl := range c.Classes {
+		out[key] = cl.MaxHP(1)
+	}
+	return out
 }
 
 // findDir looks for name in the working directory and its parents, so the

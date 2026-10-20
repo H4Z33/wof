@@ -107,21 +107,22 @@ func (e *Engine) Load(name, source string) error {
 
 // Brain binds one NPC to a loaded module.
 type Brain struct {
-	think lua.LValue
-	self  *lua.LUserData
-	mem   *lua.LTable
-	Fails int
+	// The module is looked up on every call, so a reloaded script takes
+	// effect for NPCs that already exist.
+	module string
+	self   *lua.LUserData
+	mem    *lua.LTable
+	Fails  int
 }
 
 func (e *Engine) NewBrain(module string, npc NPC) (*Brain, error) {
-	mod, ok := e.modules[module]
-	if !ok {
+	if _, ok := e.modules[module]; !ok {
 		return nil, fmt.Errorf("unknown AI module %q", module)
 	}
 	ud := e.L.NewUserData()
 	ud.Value = npc
 	e.L.SetMetatable(ud, e.L.GetTypeMetatable(npcType))
-	return &Brain{think: mod.RawGetString("think"), self: ud, mem: e.L.NewTable()}, nil
+	return &Brain{module: module, self: ud, mem: e.L.NewTable()}, nil
 }
 
 // ResetMemory clears the brain's private table (e.g. on respawn).
@@ -148,7 +149,11 @@ func (e *Engine) Think(b *Brain) error {
 	if ctx := e.L.Context(); ctx != nil && ctx.Err() != nil {
 		return ErrBudget
 	}
-	err := e.L.CallByParam(lua.P{Fn: b.think, NRet: 0, Protect: true}, b.self, b.mem)
+	mod, ok := e.modules[b.module]
+	if !ok {
+		return fmt.Errorf("unknown AI module %q", b.module)
+	}
+	err := e.L.CallByParam(lua.P{Fn: mod.RawGetString("think"), NRet: 0, Protect: true}, b.self, b.mem)
 	if err != nil {
 		b.Fails++
 		if ctx := e.L.Context(); ctx != nil && ctx.Err() != nil {

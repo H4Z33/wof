@@ -37,6 +37,12 @@ type effect struct {
 	dealt float64 // multiplier on damage dealt (1 = none)
 	taken float64 // multiplier on damage taken (1 = none)
 	until uint32
+	// Over time: damage per second (positive) or healing (negative).
+	dot    float64
+	slow   float64 // NPC speed multiplier (0 = none)
+	stun   bool    // NPC cannot move, think or attack
+	source uint32  // who applied it (credited for damage over time)
+	skill  uint32
 }
 
 func (e *entity) addEffect(ef effect) {
@@ -93,9 +99,13 @@ type player struct {
 	lastSeq   uint32
 	idleTicks int
 
-	exp       int64
-	cooldowns map[uint32]uint32 // skill id -> first tick it can be used again
-	deadUntil uint32            // respawn tick while dead, else 0
+	exp      int64
+	class    *content.Class // nil on content without classes (tests)
+	resource float64        // Qi, Aether Charge, Divine Favor... per class
+	// Last tick this player dealt damage (Aether Charge drains outside combat).
+	combatTick uint32
+	cooldowns  map[uint32]uint32 // skill id -> first tick it can be used again
+	deadUntil  uint32            // respawn tick while dead, else 0
 
 	// Fate.
 	luck        int

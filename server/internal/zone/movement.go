@@ -52,7 +52,7 @@ func (z *Zone) applyInputs(p *player, dt float64) {
 // moveNPC walks an NPC toward its chase target or goal point.
 func (z *Zone) moveNPC(n *npc, dt float64) {
 	e := n.e
-	if !e.alive() {
+	if !e.alive() || e.stunned(z.tick.Load()) {
 		e.moving = false
 		return
 	}
@@ -91,7 +91,7 @@ func (z *Zone) moveNPC(n *npc, dt float64) {
 		return
 	}
 	toWP := hdist(e.pos, wp)
-	step := n.def.Speed * dt
+	step := n.def.Speed * e.speedFactor(z.tick.Load()) * dt
 	if len(n.path) <= 1 {
 		step = min(step, d-stop) // last leg: stop at the right distance
 	}

@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,8 @@ import (
 
 	pb "convergence/server/gen/convergence/v1"
 )
+
+var prefix string
 
 type result struct {
 	name      string
@@ -46,6 +49,7 @@ func main() {
 	n := flag.Int("n", 10, "number of bots")
 	duration := flag.Duration("duration", 15*time.Second, "how long each bot plays")
 	fight := flag.Bool("fight", false, "hunt NPCs instead of walking randomly")
+	flag.StringVar(&prefix, "prefix", "bot", "account/character name prefix (new prefix = fresh characters)")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), *duration+60*time.Second)
@@ -125,7 +129,7 @@ type character struct {
 
 // enterWorld returns a play ticket and the WebSocket path.
 func enterWorld(ctx context.Context, base string, i int) (string, string, error) {
-	user := fmt.Sprintf("bot_%03d", i)
+	user := fmt.Sprintf("%s_%03d", prefix, i)
 	const password = "bot-password-123"
 	if code, err := api(ctx, "POST", base+"/api/v1/register", "", map[string]string{"username": user, "password": password}, nil); err != nil {
 		return "", "", err
@@ -141,10 +145,11 @@ func enterWorld(ctx context.Context, base string, i int) (string, string, error)
 	}
 	if len(login.Characters) == 0 {
 		models := []string{"mannequin_m", "mannequin_f", "zuo_mo"}
+		classes := []string{"sword_cultivator", "rail_gunner", "mystic"}
 		var created struct {
 			Character character `json:"character"`
 		}
-		body := map[string]string{"name": fmt.Sprintf("Bot%03d", i), "model": models[i%len(models)]}
+		body := map[string]string{"name": fmt.Sprintf("%s%03d", strings.ToUpper(prefix[:1])+prefix[1:], i), "model": models[i%len(models)], "class": classes[i%len(classes)]}
 		if code, err := api(ctx, "POST", base+"/api/v1/characters", login.Session, body, &created); err != nil || code != http.StatusCreated {
 			return "", "", fmt.Errorf("create character: HTTP %d %v", code, err)
 		}
@@ -200,6 +205,7 @@ func runBot(ctx context.Context, base string, i int, duration time.Duration, fig
 	}
 
 	var mu sync.Mutex
+	var skills []*pb.SkillInfo // enemy-target skills from Welcome
 	var myID, lastAck uint32
 	var myX, myZ float64
 	var dead bool
@@ -222,6 +228,11 @@ func runBot(ctx context.Context, base string, i int, duration time.Duration, fig
 			switch p := msg.Payload.(type) {
 			case *pb.ServerMessage_Welcome:
 				myID = p.Welcome.EntityId
+				for _, sk := range p.Welcome.Skills {
+					if !sk.TargetSelf {
+						skills = append(skills, sk)
+					}
+				}
 			case *pb.ServerMessage_Snapshot:
 				s := p.Snapshot
 				res.snapshots++
@@ -279,8 +290,7 @@ func runBot(ctx context.Context, base string, i int, duration time.Duration, fig
 	deadline := time.After(duration)
 	angle := rand.Float64() * 2 * math.Pi
 	var seq uint32
-	var nextSkill [3]time.Time
-	cooldown := [3]time.Duration{0, 1250 * time.Millisecond, 3050 * time.Millisecond}
+	ready := map[uint32]time.Time{}
 	for {
 		select {
 		case err := <-readErr:
@@ -314,15 +324,17 @@ func runBot(ctx context.Context, base string, i int, duration time.Duration, fig
 				if best != 0 {
 					e := entities[best]
 					dirX, dirZ = (e.x-myX)/bestD, (e.z-myZ)/bestD
-					now := time.Now()
-					switch {
-					case bestD <= 2.0:
+					// Close in to the basic attack's range, then use whatever is ready.
+					if len(skills) > 0 && bestD <= float64(skills[0].Range)*0.8 {
 						dirX, dirZ = 0, 0
-						if now.After(nextSkill[1]) {
-							skill, target, nextSkill[1] = 1, best, now.Add(cooldown[1])
+					}
+					now := time.Now()
+					for _, sk := range skills {
+						if bestD <= float64(sk.Range) && now.After(ready[sk.Id]) {
+							skill, target = sk.Id, best
+							ready[sk.Id] = now.Add(time.Duration(sk.CooldownMs+100) * time.Millisecond)
+							break
 						}
-					case bestD <= 18 && now.After(nextSkill[2]):
-						skill, target, nextSkill[2] = 2, best, now.Add(cooldown[2])
 					}
 				}
 			}
