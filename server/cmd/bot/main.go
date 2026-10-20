@@ -38,6 +38,7 @@ type result struct {
 	deaths    int
 	rejected  map[string]int
 	level     uint32
+	fates     map[string]int // fate actions received
 }
 
 func main() {
@@ -63,6 +64,7 @@ func main() {
 	wg.Wait()
 
 	failed, totalHits, totalKills := 0, 0, 0
+	totalFates := map[string]int{}
 	minSnaps := int(duration.Seconds() * 20 * 0.9)
 	for _, r := range results {
 		status := "ok"
@@ -79,6 +81,9 @@ func main() {
 		}
 		totalHits += r.hits
 		totalKills += r.kills
+		for k, v := range r.fates {
+			totalFates[k] += v
+		}
 		fmt.Printf("%s snapshots=%d seen=%d ack_lag=%d hits=%d kills=%d deaths=%d level=%d rejected=%v %s\n",
 			r.name, r.snapshots, r.seen, r.ackLag, r.hits, r.kills, r.deaths, r.level, r.rejected, status)
 	}
@@ -86,7 +91,7 @@ func main() {
 		fmt.Println("FAIL: fight mode but no bot landed a hit")
 		failed++
 	}
-	fmt.Printf("%d/%d bots passed, %d hits, %d kills\n", *n-failed, *n, totalHits, totalKills)
+	fmt.Printf("%d/%d bots passed, %d hits, %d kills, fate events %v\n", *n-failed, *n, totalHits, totalKills, totalFates)
 	if failed > 0 {
 		os.Exit(1)
 	}
@@ -162,7 +167,7 @@ type seenEntity struct {
 }
 
 func runBot(ctx context.Context, base string, i int, duration time.Duration, fight bool) (res result) {
-	res = result{name: fmt.Sprintf("bot_%03d", i), rejected: map[string]int{}}
+	res = result{name: fmt.Sprintf("bot_%03d", i), rejected: map[string]int{}, fates: map[string]int{}}
 	ticket, wsPath, err := enterWorld(ctx, base, i)
 	if err != nil {
 		res.err = err
@@ -258,6 +263,8 @@ func runBot(ctx context.Context, base string, i int, duration time.Duration, fig
 						res.deaths++
 					}
 				}
+			case *pb.ServerMessage_Fate:
+				res.fates[p.Fate.Action]++
 			case *pb.ServerMessage_SkillRejected:
 				res.rejected[p.SkillRejected.Reason]++
 			case *pb.ServerMessage_Error:

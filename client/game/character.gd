@@ -40,6 +40,9 @@ func setup(spawn: PB.EntitySpawn, local: bool) -> void:
 	display_name = spawn.name
 	level = maxi(spawn.level, 1)
 	name = "Entity_%d" % entity_id
+	if kind == PB.EntityKind.ENTITY_KIND_OBJECT:
+		_build_object()
+		return
 	var parts := Models.instantiate(spawn.model)
 	add_child(parts[0])
 	_player = parts[1]
@@ -76,6 +79,99 @@ func setup(spawn: PB.EntitySpawn, local: bool) -> void:
 
 func is_npc() -> bool:
 	return kind == PB.EntityKind.ENTITY_KIND_NPC
+
+
+func is_object() -> bool:
+	return kind == PB.EntityKind.ENTITY_KIND_OBJECT
+
+
+## A Fate hidden cache: a hovering, pulsing orb of light.
+func _build_object() -> void:
+	var orb := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.3
+	sphere.height = 0.6
+	orb.mesh = sphere
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1.0, 0.85, 0.35)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.8, 0.3)
+	orb.material_override = mat
+	orb.position = Vector3(0, 0.9, 0)
+	add_child(orb)
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.8, 0.4)
+	light.light_energy = 2.0
+	light.omni_range = 5.0
+	light.position = orb.position
+	add_child(light)
+	var tw := orb.create_tween().set_loops()
+	tw.tween_property(orb, "position:y", 1.2, 1.0).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(orb, "position:y", 0.9, 1.0).set_trans(Tween.TRANS_SINE)
+	_plate = Label3D.new()
+	_plate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_plate.position = Vector3(0, 1.8, 0)
+	_plate.font_size = 40
+	_plate.pixel_size = 0.005
+	_plate.outline_size = 12
+	_plate.text = display_name
+	_plate.modulate = Color(1.0, 0.85, 0.4)
+	add_child(_plate)
+
+
+const EFFECT_COLORS := {
+	1: Color(1.0, 0.8, 0.25),  # vigor
+	2: Color(0.7, 0.4, 1.0),  # weakened
+	4: Color(1.0, 0.2, 0.15),  # enraged
+	8: Color(0.35, 0.35, 0.45),  # ill omen
+}
+const EFFECT_NAMES := {1: "Vigor", 2: "Weakened", 4: "Enraged", 8: "Ill Omen"}
+
+var effects := 0
+var _aura: MeshInstance3D
+
+
+## Shows active Fate effects (EffectFlag bits) as a colored aura at the feet.
+func set_effects(flags: int) -> void:
+	if flags == effects or is_object():
+		return
+	effects = flags
+	if flags == 0:
+		if _aura != null:
+			_aura.queue_free()
+			_aura = null
+		return
+	if _aura == null:
+		_aura = MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.75
+		cyl.bottom_radius = 0.75
+		cyl.height = 2.1
+		cyl.cap_top = false
+		cyl.cap_bottom = false
+		_aura.mesh = cyl
+		_aura.position = Vector3(0, 1.05, 0)
+		add_child(_aura)
+	var color := Color.WHITE
+	for bit in EFFECT_COLORS:
+		if flags & bit:
+			color = EFFECT_COLORS[bit]
+			break
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.albedo_color = Color(color, 0.22)
+	_aura.material_override = mat
+
+
+func effect_names() -> PackedStringArray:
+	var out := PackedStringArray()
+	for bit in EFFECT_NAMES:
+		if effects & bit:
+			out.append(EFFECT_NAMES[bit])
+	return out
 
 
 func is_alive() -> bool:
@@ -187,7 +283,7 @@ func _play(anim: String, blend := ANIM_BLEND) -> void:
 
 
 func _update_plate() -> void:
-	if _plate == null:
+	if _plate == null or is_object():
 		return
 	if is_npc():
 		_plate.text = "%s  Lv %d" % [display_name, level]

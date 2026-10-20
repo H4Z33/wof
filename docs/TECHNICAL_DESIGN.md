@@ -206,7 +206,27 @@ Lua runs in one sandboxed VM per zone (no `os`, `io`, `debug`), with an instruct
 - Trades, market purchases and crafts are **single DB transactions**. The zone never "gives" an item before the commit succeeds.
 - The Artisan archetype plugs into gathering nodes (zone entities), recipes (data) and quality rolls (server-side RNG).
 
-### 5.6 Persistence strategy
+### 5.6 Fate: an LLM game master (proof of concept)
+
+Characters have **luck** (3d6+1 at creation) and **karma** (−100..100, changed by deeds). Fate turns them into events the way a tabletop GM prepares encounters ahead of the session:
+
+```
+            background (seconds)                         play (same tick)
+zone ──DeckRequest──▶ Director ──▶ Ollama model     trigger: strike/kill/travel/rest/wounded
+     (slots sampled                 (deepseek-v4.1-flash:cloud)     │ roll with the player's entropy
+      from the player's  ◀──Deck── validate cards         ▼
+      own odds)                     (fallback if invalid)   draw matching card ─▶ apply ─▶ FateEvent
+```
+
+- **The server owns the dice.** When fate strikes, fortune vs. misfortune and magnitude (1-3) come from luck and karma. The agent never decides outcomes.
+- **The agent writes cards ahead of time.** For each slot the server requests (trigger, omen, magnitude), it picks one action allowed for that slot from the catalog in `content/fate.yaml` and writes the narration. Slots are sampled from the player's own distribution, so the deck covers what is likely to be drawn. Decks refill when low or when the player's situation changes (place, level, karma band).
+- **Randomness from player actions.** Every MoveInput and skill use is mixed (splitmix64) into a per-player entropy stream seeded with a server secret, so rolls depend on what the player did but cannot be steered.
+- **Untrusted output.** Cards are validated against the catalog and loot tables; narration is sanitized and length-limited; invalid cards and agent failures become fallback cards. Measured in the PoC: thinking disabled, about 2-4 s per 8-card deal, all cards accepted, about 80% of events using agent cards.
+- **Catalog-driven.** Actions (treasure, blessing, insight, critical, weakness, vigor aura, hidden cache, spoils, ambush, mishap, fumble, enrage, ill omen) declare omen, triggers and numbers in YAML; the zone implements each kind.
+
+PoC shortcuts to revisit: inventory is a JSONB column (moves to an item table with the ledger in M4); items have no effects yet; temporary effects are damage multipliers only.
+
+### 5.7 Persistence strategy
 
 - Character state lives in memory in the zone; **write-behind** every ~30 s for dirty characters, plus immediately on logout, zone transfer and any economic transaction.
 - Schema managed by `goose` migrations embedded in the server binary and applied at startup; queries are hand-written, parameterized `pgx` calls in `internal/account` (revisit `sqlc` once a cgo-capable CI exists).

@@ -80,12 +80,12 @@ func (s *Service) Authenticate(ctx context.Context, username, password string) (
 	return id, nil
 }
 
-const characterColumns = `id, account_id, name, model, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp`
+const characterColumns = `id, account_id, name, model, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp, luck, karma, inventory`
 
 func scanCharacter(row pgx.Row) (model.Character, error) {
 	var c model.Character
 	err := row.Scan(&c.ID, &c.AccountID, &c.Name, &c.Model, &c.ZoneID,
-		&c.Pos[0], &c.Pos[1], &c.Pos[2], &c.Yaw, &c.Level, &c.Exp, &c.HP)
+		&c.Pos[0], &c.Pos[1], &c.Pos[2], &c.Yaw, &c.Level, &c.Exp, &c.HP, &c.Luck, &c.Karma, &c.Inventory)
 	return c, err
 }
 
@@ -137,9 +137,10 @@ func (s *Service) CreateCharacter(ctx context.Context, c model.Character) (model
 		return c, ErrTooManyCharacters
 	}
 	err = tx.QueryRow(ctx,
-		`INSERT INTO characters (account_id, name, model, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+		`INSERT INTO characters (account_id, name, model, zone_id, pos_x, pos_y, pos_z, yaw, level, exp, hp, luck, karma, inventory)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
 		c.AccountID, c.Name, c.Model, c.ZoneID, c.Pos[0], c.Pos[1], c.Pos[2], c.Yaw, c.Level, c.Exp, c.HP,
+		c.Luck, c.Karma, inventoryJSON(c.Inventory),
 	).Scan(&c.ID)
 	if isUniqueViolation(err) {
 		return c, ErrNameTaken
@@ -150,14 +151,23 @@ func (s *Service) CreateCharacter(ctx context.Context, c model.Character) (model
 	return c, tx.Commit(ctx)
 }
 
+// inventoryJSON never returns nil, so the column is '{}' rather than 'null'.
+func inventoryJSON(inv map[string]int) map[string]int {
+	if inv == nil {
+		return map[string]int{}
+	}
+	return inv
+}
+
 // SaveCharacters writes the mutable state of each character in one batch.
 func (s *Service) SaveCharacters(ctx context.Context, chars []model.Character) error {
 	batch := &pgx.Batch{}
 	for _, c := range chars {
 		batch.Queue(`UPDATE characters
-			SET zone_id = $2, pos_x = $3, pos_y = $4, pos_z = $5, yaw = $6, level = $7, exp = $8, hp = $9, updated_at = now()
+			SET zone_id = $2, pos_x = $3, pos_y = $4, pos_z = $5, yaw = $6, level = $7, exp = $8, hp = $9,
+			    karma = $10, inventory = $11, updated_at = now()
 			WHERE id = $1`,
-			c.ID, c.ZoneID, c.Pos[0], c.Pos[1], c.Pos[2], c.Yaw, c.Level, c.Exp, c.HP)
+			c.ID, c.ZoneID, c.Pos[0], c.Pos[1], c.Pos[2], c.Yaw, c.Level, c.Exp, c.HP, c.Karma, inventoryJSON(c.Inventory))
 	}
 	return s.pool.SendBatch(ctx, batch).Close()
 }

@@ -14,4 +14,9 @@ type Character struct {
 	Level     int
 	Exp       int64
 	HP        int
+	// Luck (1-20) is fixed at creation; karma (-100..100) changes with deeds.
+	Luck  int
+	Karma int
+	// Item key -> quantity.
+	Inventory map[string]int
 }

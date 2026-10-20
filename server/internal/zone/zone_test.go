@@ -367,7 +367,8 @@ func TestNPCAggroAttackAndLeash(t *testing.T) {
 	if n.target != 0 {
 		t.Error("bandit still targeting after leash")
 	}
-	if d := math.Hypot(n.e.pos[0]-n.home[0], n.e.pos[2]-n.home[1]); d > 1.5 {
+	// Once home and healed it may wander again, but only within its radius.
+	if d := math.Hypot(n.e.pos[0]-n.home[0], n.e.pos[2]-n.home[1]); d > n.def.Stats["wander_radius"]+0.5 {
 		t.Errorf("bandit is %.1f m from home", d)
 	}
 	if n.e.hp != n.e.maxHP {

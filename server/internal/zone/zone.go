@@ -5,9 +5,12 @@ package zone
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"sort"
@@ -18,6 +21,7 @@ import (
 
 	pb "convergence/server/gen/convergence/v1"
 	"convergence/server/internal/content"
+	"convergence/server/internal/fate"
 	"convergence/server/internal/model"
 	"convergence/server/internal/rules"
 	"convergence/server/internal/script"
@@ -32,6 +36,11 @@ type Conn interface {
 // Saver persists characters without blocking the zone.
 type Saver interface {
 	Save(model.Character)
+}
+
+// FateDirector deals fate decks in the background (see package fate).
+type FateDirector interface {
+	Deal(req fate.DeckRequest, reply func(fate.Deck)) bool
 }
 
 type Config struct {
@@ -134,6 +143,20 @@ type Zone struct {
 	events   []*pb.CombatEvent
 	skills   []*pb.SkillInfo
 	nextID   uint32
+	fate     FateDirector
+	places   []place
+	aiLoaded map[string]bool
+	caches   []*entity
+	// Mixed into every player's fate entropy so rolls cannot be predicted
+	// from inputs alone.
+	fateSecret uint64
+}
+
+// place is a named area used to describe where a player is.
+type place struct {
+	center [2]float64
+	radius float64
+	name   string
 }
 
 // New builds a zone and spawns its NPCs. zc may be nil (no NPCs); saver may
@@ -155,7 +178,11 @@ func New(cfg Config, c *content.Content, zc *content.Zone, saver Saver, log *slo
 		byChar:   make(map[int64]uint32),
 		grid:     newGrid(cfg.CellSize),
 		lua:      script.New(log),
+		aiLoaded: make(map[string]bool),
 	}
+	var seed [8]byte
+	crand.Read(seed[:])
+	z.fateSecret = binary.LittleEndian.Uint64(seed[:])
 	for _, s := range c.Skills {
 		z.skills = append(z.skills, &pb.SkillInfo{
 			Id: s.ID, Name: s.Name, Range: float32(s.Range), CooldownMs: uint32(s.CooldownMS),
@@ -173,6 +200,10 @@ func New(cfg Config, c *content.Content, zc *content.Zone, saver Saver, log *slo
 }
 
 func (z *Zone) Config() Config { return z.cfg }
+
+// SetFate connects the Fate agent. Call before Run. Without it, fate events
+// are resolved immediately with fallback choices.
+func (z *Zone) SetFate(d FateDirector) { z.fate = d }
 
 // Tick is the current server tick. Safe from any goroutine.
 func (z *Zone) Tick() uint32 { return z.tick.Load() }
@@ -263,6 +294,8 @@ func (z *Zone) handleCmd(cmd any) {
 	case joinReq:
 		h, err := z.join(c.char, c.conn)
 		c.reply <- joinResult{handle: h, err: err}
+	case fate.Deck:
+		z.receiveDeck(c)
 	case leaveReq:
 		if p, ok := z.players[c.id]; ok {
 			z.removePlayer(p)
@@ -321,7 +354,14 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		lastSave:  z.tick.Load(),
 		known:     make(map[uint32]bool),
 		visible:   make(map[uint32]*entity),
+		luck:      c.Luck,
+		karma:     c.Karma,
+		inventory: maps.Clone(c.Inventory),
 	}
+	if p.inventory == nil {
+		p.inventory = make(map[string]int)
+	}
+	z.initFate(p)
 	e.player = p
 	z.entities[e.id] = e
 	z.players[e.id] = p
@@ -339,6 +379,7 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		Skills:        z.skills,
 		Status:        z.status(p),
 		CharacterName: c.Name,
+		Inventory:     z.inventoryList(p),
 	}}})
 	z.log.Info("player joined", "entity", e.id, "name", e.name, "character", c.ID, "players", len(z.players))
 	return &Handle{z: z, id: e.id}, nil
@@ -367,6 +408,10 @@ func (z *Zone) record(p *player) model.Character {
 		Level:     p.e.level,
 		Exp:       p.exp,
 		HP:        p.e.hp,
+		Luck:      p.luck,
+		Karma:     p.karma,
+		// Copied: the saver reads it on another goroutine.
+		Inventory: maps.Clone(p.inventory),
 	}
 }
 
@@ -404,6 +449,7 @@ func (z *Zone) step() {
 		z.moveNPC(n, dt)
 	}
 	z.updateLife(tick)
+	z.updateFate(tick)
 	z.replicate(tick)
 	z.autosave(tick)
 }

@@ -68,8 +68,24 @@ go -C server run ./cmd/bot -n 50 -duration 20s -fight
 | `content/npcs/*.yaml` | NPCs: stats, attack, respawn, AI script |
 | `content/ai/*.lua` | NPC behavior; `think(npc, mem)` runs 5 times per second |
 | `content/zones/*.yaml` | Zone size, player spawn, NPC spawn groups |
+| `content/items.yaml` | Items (no effects yet; kept in the inventory) |
+| `content/fate.yaml` | Fate: deck size, triggers and their chances, luck/karma odds, loot, and the action catalog |
 
 The server validates references at startup and refuses to start on errors.
+
+## Fate (luck and karma)
+
+A proof of concept of an LLM "game master". Each character has **luck** (rolled at creation) and **karma** (changes with deeds). In the background, the Fate agent prepares a small deck of possible fates for each player: situations and narrations that fit their place, deeds and standing. During play, triggers (a hit, a kill, a long walk, a rest, a close call) roll dice fed by the player's own inputs; when fate strikes, the server draws the matching card and applies it at once. Actions include treasure, healing, experience, critical hits, exposed weaknesses, auras, hidden caches, extra spoils, ambushes, mishaps, misses and enraged enemies.
+
+The agent only writes cards: the server decides when something happens, how good or bad, and validates every card against the catalog (anything invalid becomes a fallback card). The game never waits on it and works without it.
+
+Server flags: `-fate-model` (default `deepseek-v4.1-flash:cloud`, empty to disable the agent), `-fate-url` (default `http://127.0.0.1:11434`), `-fate-timeout`.
+
+Live check of the agent against Ollama:
+
+```bash
+FATE_OLLAMA_MODEL=deepseek-v4.1-flash:cloud go -C server test ./internal/fate -run Live -v
+```
 
 ## Protocol changes
 

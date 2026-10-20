@@ -11,6 +11,7 @@
 ##   --autofight        target, chase and attack the nearest enemy (automated tests)
 ##   --cam_yaw=deg      initial camera angle around the player (0 = front view)
 ##   --screenshot=path  save a screenshot after --screenshot_delay seconds (default 6)
+##   --screenshot_on_fate=path  save path_1..3.png right after the first fate events
 extends Node
 
 const PB := preload("res://gen/convergence/v1/world.pb.gd")
@@ -155,6 +156,8 @@ func _on_welcomed(welcome: PB.Welcome) -> void:
 	get_window().title = "Convergence — %s" % welcome.character_name
 	if _opts.has("screenshot"):
 		_take_screenshot(_opts["screenshot"])
+	if _opts.has("screenshot_on_fate"):
+		Net.fate_received.connect(_on_fate_screenshot)
 
 
 func _on_disconnected(reason: String) -> void:
@@ -167,6 +170,21 @@ func _on_disconnected(reason: String) -> void:
 	else:
 		_show_characters()
 	_status.text = reason
+
+
+var _fate_shots := 0
+
+
+## Test option: saves <path>_<n>.png shortly after each of the first 3 fate events.
+func _on_fate_screenshot(_ev) -> void:
+	_fate_shots += 1
+	if _fate_shots > 3:
+		return
+	var n := _fate_shots
+	await get_tree().create_timer(1.0).timeout
+	var path: String = _opts["screenshot_on_fate"].trim_suffix(".png") + "_%d.png" % n
+	get_viewport().get_texture().get_image().save_png(path)
+	print("screenshot saved: ", path)
 
 
 func _take_screenshot(path: String) -> void:

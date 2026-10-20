@@ -191,19 +191,35 @@ class _Reader:
 
 enum ProtocolVersion {
 	PROTOCOL_VERSION_UNSPECIFIED = 0,
-	PROTOCOL_VERSION_CURRENT = 2,
+	PROTOCOL_VERSION_CURRENT = 4,
+}
+
+enum FateOmen {
+	FATE_OMEN_UNSPECIFIED = 0,
+	FATE_OMEN_FORTUNE = 1,
+	FATE_OMEN_MISFORTUNE = 2,
 }
 
 enum EntityKind {
 	ENTITY_KIND_UNSPECIFIED = 0,
 	ENTITY_KIND_PLAYER = 1,
 	ENTITY_KIND_NPC = 2,
+	ENTITY_KIND_OBJECT = 3,
+}
+
+enum EffectFlag {
+	EFFECT_FLAG_UNSPECIFIED = 0,
+	EFFECT_FLAG_VIGOR = 1,
+	EFFECT_FLAG_WEAKENED = 2,
+	EFFECT_FLAG_ENRAGED = 4,
+	EFFECT_FLAG_ILL_OMEN = 8,
 }
 
 enum CombatEventKind {
 	COMBAT_EVENT_KIND_UNSPECIFIED = 0,
 	COMBAT_EVENT_KIND_DAMAGE = 1,
 	COMBAT_EVENT_KIND_DEATH = 2,
+	COMBAT_EVENT_KIND_MISS = 3,
 }
 
 class Vec3:
@@ -514,6 +530,7 @@ class ServerMessage:
 	var pong: Pong = null
 	var error: ServerError = null
 	var skill_rejected: SkillRejected = null
+	var fate: FateEvent = null
 
 	func which_payload() -> String:
 		if welcome != null: return "welcome"
@@ -521,6 +538,7 @@ class ServerMessage:
 		if pong != null: return "pong"
 		if error != null: return "error"
 		if skill_rejected != null: return "skill_rejected"
+		if fate != null: return "fate"
 		return ""
 
 	func _write(w: _Writer) -> void:
@@ -534,6 +552,8 @@ class ServerMessage:
 			w.message(13, error)
 		if skill_rejected != null:
 			w.message(14, skill_rejected)
+		if fate != null:
+			w.message(15, fate)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -552,6 +572,7 @@ class ServerMessage:
 						pong = null
 						error = null
 						skill_rejected = null
+						fate = null
 						welcome = v
 				11:
 					if wt != 2:
@@ -565,6 +586,7 @@ class ServerMessage:
 						pong = null
 						error = null
 						skill_rejected = null
+						fate = null
 						snapshot = v
 				12:
 					if wt != 2:
@@ -578,6 +600,7 @@ class ServerMessage:
 						snapshot = null
 						error = null
 						skill_rejected = null
+						fate = null
 						pong = v
 				13:
 					if wt != 2:
@@ -591,6 +614,7 @@ class ServerMessage:
 						snapshot = null
 						pong = null
 						skill_rejected = null
+						fate = null
 						error = v
 				14:
 					if wt != 2:
@@ -604,7 +628,22 @@ class ServerMessage:
 						snapshot = null
 						pong = null
 						error = null
+						fate = null
 						skill_rejected = v
+				15:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := FateEvent.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						welcome = null
+						snapshot = null
+						pong = null
+						error = null
+						skill_rejected = null
+						fate = v
 				_:
 					r.skip(wt)
 
@@ -632,6 +671,7 @@ class Welcome:
 	var skills: Array[SkillInfo] = []
 	var status: PlayerStatus = null
 	var character_name: String = ""
+	var inventory: Array[InventoryItem] = []
 
 	func _write(w: _Writer) -> void:
 		if entity_id != 0:
@@ -661,6 +701,8 @@ class Welcome:
 		if not character_name.is_empty():
 			w.tag(10, 2)
 			w.string(character_name)
+		for v in inventory:
+			w.message(11, v)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -715,6 +757,15 @@ class Welcome:
 				10:
 					if wt == 2: character_name = r.string()
 					else: r.skip(wt)
+				11:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := InventoryItem.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						inventory.append(v)
 				_:
 					r.skip(wt)
 
@@ -726,6 +777,52 @@ class Welcome:
 	# Returns null if the bytes are malformed.
 	static func from_bytes(b: PackedByteArray) -> Welcome:
 		var m := Welcome.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class InventoryItem:
+	extends RefCounted
+	var key: String = ""
+	var name: String = ""
+	var quantity: int = 0
+
+	func _write(w: _Writer) -> void:
+		if not key.is_empty():
+			w.tag(1, 2)
+			w.string(key)
+		if not name.is_empty():
+			w.tag(2, 2)
+			w.string(name)
+		if quantity != 0:
+			w.tag(3, 0)
+			w.varint(quantity)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: key = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 2: name = r.string()
+					else: r.skip(wt)
+				3:
+					if wt == 0: quantity = r.uint32()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> InventoryItem:
+		var m := InventoryItem.new()
 		var r := _Reader.new(b, 0, b.size())
 		m._read(r)
 		return null if r.failed else m
@@ -805,6 +902,8 @@ class PlayerStatus:
 	var hp: int = 0
 	var max_hp: int = 0
 	var respawn_in_ms: int = 0
+	var luck: int = 0
+	var karma: int = 0
 
 	func _write(w: _Writer) -> void:
 		if level != 0:
@@ -825,6 +924,12 @@ class PlayerStatus:
 		if respawn_in_ms != 0:
 			w.tag(6, 0)
 			w.varint(respawn_in_ms)
+		if luck != 0:
+			w.tag(7, 0)
+			w.varint(luck)
+		if karma != 0:
+			w.tag(8, 0)
+			w.zigzag(karma)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -849,6 +954,12 @@ class PlayerStatus:
 				6:
 					if wt == 0: respawn_in_ms = r.uint32()
 					else: r.skip(wt)
+				7:
+					if wt == 0: luck = r.uint32()
+					else: r.skip(wt)
+				8:
+					if wt == 0: karma = r.zigzag32()
+					else: r.skip(wt)
 				_:
 					r.skip(wt)
 
@@ -872,6 +983,7 @@ class EntityState:
 	var moving: bool = false
 	var hp: int = 0
 	var max_hp: int = 0
+	var effects: int = 0
 
 	func _write(w: _Writer) -> void:
 		if id != 0:
@@ -891,6 +1003,9 @@ class EntityState:
 		if max_hp != 0:
 			w.tag(6, 0)
 			w.varint(max_hp)
+		if effects != 0:
+			w.tag(7, 0)
+			w.varint(effects)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -920,6 +1035,9 @@ class EntityState:
 					else: r.skip(wt)
 				6:
 					if wt == 0: max_hp = r.uint32()
+					else: r.skip(wt)
+				7:
+					if wt == 0: effects = r.uint32()
 					else: r.skip(wt)
 				_:
 					r.skip(wt)
@@ -1015,6 +1133,7 @@ class CombatEvent:
 	var target_id: int = 0
 	var skill_id: int = 0
 	var amount: int = 0
+	var critical: bool = false
 
 	func _write(w: _Writer) -> void:
 		if kind != 0:
@@ -1032,6 +1151,9 @@ class CombatEvent:
 		if amount != 0:
 			w.tag(5, 0)
 			w.varint(amount)
+		if critical != false:
+			w.tag(6, 0)
+			w.boolean(critical)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -1052,6 +1174,9 @@ class CombatEvent:
 					else: r.skip(wt)
 				5:
 					if wt == 0: amount = r.uint32()
+					else: r.skip(wt)
+				6:
+					if wt == 0: critical = r.boolean()
 					else: r.skip(wt)
 				_:
 					r.skip(wt)
@@ -1166,6 +1291,99 @@ class Snapshot:
 	# Returns null if the bytes are malformed.
 	static func from_bytes(b: PackedByteArray) -> Snapshot:
 		var m := Snapshot.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class FateEvent:
+	extends RefCounted
+	var omen: int = 0
+	var magnitude: int = 0
+	var action: String = ""
+	var narration: String = ""
+	var item_name: String = ""
+	var amount: int = 0
+	var inventory: Array[InventoryItem] = []
+	var trigger: String = ""
+	var duration_ms: int = 0
+
+	func _write(w: _Writer) -> void:
+		if omen != 0:
+			w.tag(1, 0)
+			w.varint(omen)
+		if magnitude != 0:
+			w.tag(2, 0)
+			w.varint(magnitude)
+		if not action.is_empty():
+			w.tag(3, 2)
+			w.string(action)
+		if not narration.is_empty():
+			w.tag(4, 2)
+			w.string(narration)
+		if not item_name.is_empty():
+			w.tag(5, 2)
+			w.string(item_name)
+		if amount != 0:
+			w.tag(6, 0)
+			w.varint(amount)
+		for v in inventory:
+			w.message(7, v)
+		if not trigger.is_empty():
+			w.tag(8, 2)
+			w.string(trigger)
+		if duration_ms != 0:
+			w.tag(9, 0)
+			w.varint(duration_ms)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 0: omen = r.varint()
+					else: r.skip(wt)
+				2:
+					if wt == 0: magnitude = r.uint32()
+					else: r.skip(wt)
+				3:
+					if wt == 2: action = r.string()
+					else: r.skip(wt)
+				4:
+					if wt == 2: narration = r.string()
+					else: r.skip(wt)
+				5:
+					if wt == 2: item_name = r.string()
+					else: r.skip(wt)
+				6:
+					if wt == 0: amount = r.uint32()
+					else: r.skip(wt)
+				7:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := InventoryItem.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						inventory.append(v)
+				8:
+					if wt == 2: trigger = r.string()
+					else: r.skip(wt)
+				9:
+					if wt == 0: duration_ms = r.uint32()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> FateEvent:
+		var m := FateEvent.new()
 		var r := _Reader.new(b, 0, b.size())
 		m._read(r)
 		return null if r.failed else m

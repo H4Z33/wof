@@ -20,6 +20,7 @@ import (
 	"convergence/server/internal/auth"
 	"convergence/server/internal/content"
 	"convergence/server/internal/db"
+	"convergence/server/internal/fate"
 	"convergence/server/internal/gateway"
 	"convergence/server/internal/model"
 	"convergence/server/internal/persist"
@@ -40,16 +41,26 @@ func main() {
 	addr := flag.String("addr", ":7777", "HTTP/WebSocket listen address")
 	contentDir := flag.String("content", findDir("content"), "content directory")
 	authBurst := flag.Int("auth-burst", 10, "register/login requests allowed per IP at once (raise for bot load tests)")
+	var opts options
+	flag.StringVar(&opts.fateModel, "fate-model", "deepseek-v4.1-flash:cloud", "Ollama model for the Fate agent; empty disables the agent (fallback cards only)")
+	flag.StringVar(&opts.fateURL, "fate-url", "http://127.0.0.1:11434", "Ollama base URL")
+	flag.DurationVar(&opts.fateTimeout, "fate-timeout", 30*time.Second, "time limit for one Fate deal")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	if err := run(*addr, *contentDir, *authBurst, log); err != nil {
+	if err := run(*addr, *contentDir, *authBurst, opts, log); err != nil {
 		log.Error("server failed", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(addr, contentDir string, authBurst int, log *slog.Logger) error {
+type options struct {
+	fateModel   string
+	fateURL     string
+	fateTimeout time.Duration
+}
+
+func run(addr, contentDir string, authBurst int, opts options, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
@@ -82,6 +93,18 @@ func run(addr, contentDir string, authBurst int, log *slog.Logger) error {
 	z, err := zone.New(zone.ConfigFor(zc), c, zc, saver, log)
 	if err != nil {
 		return err
+	}
+	if c.Fate != nil {
+		var oracle fate.Oracle
+		if opts.fateModel != "" {
+			oracle = &fate.Ollama{URL: opts.fateURL, Model: opts.fateModel}
+			log.Info("fate agent", "model", opts.fateModel, "url", opts.fateURL)
+		} else {
+			log.Info("fate agent disabled; using fallback cards")
+		}
+		director := fate.NewDirector(oracle, 4, opts.fateTimeout, log)
+		defer director.Close() // after the zone stops (defers run in reverse)
+		z.SetFate(director)
 	}
 	go z.Run(ctx)
 	defer func() { <-z.Done() }()

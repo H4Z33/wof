@@ -85,8 +85,10 @@ func start(welcome: PB.Welcome) -> void:
 	_build_ring()
 	if welcome.status != null:
 		_on_status(welcome.status)
+	_hud.set_inventory(welcome.inventory)
 	Net.snapshot_received.connect(_on_snapshot)
 	Net.skill_rejected.connect(_on_skill_rejected)
+	Net.fate_received.connect(_on_fate)
 
 
 func _process(delta: float) -> void:
@@ -216,6 +218,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_TAB:
 				_cycle_target()
 				get_viewport().set_input_as_handled()
+			KEY_I:
+				_hud.toggle_inventory()
 			KEY_1, KEY_2, KEY_3, KEY_4:
 				var i: int = event.physical_keycode - KEY_1
 				if i < _skill_order.size():
@@ -340,6 +344,7 @@ func _apply_state(snap: PB.Snapshot, state: PB.EntityState) -> void:
 		return
 	var c: Character = _entities[state.id]
 	c.set_health(state.hp, state.max_hp)
+	c.set_effects(state.effects)
 	if state.id == my_id:
 		_reconcile(_vec(state.pos), snap.ack_input_seq)
 	else:
@@ -362,10 +367,19 @@ func _on_combat_event(ev: PB.CombatEvent) -> void:
 			elif ev.source_id != my_id:
 				color = Color(0.75, 0.75, 0.75)
 			var amount := str(ev.amount)
+			if ev.critical:
+				amount = "%d!" % ev.amount
+				color = Color(1.0, 0.8, 0.2)
 			if skill != null and skill.projectile and src != null:
 				_fire_projectile(src, dst, func(): _land_hit(dst, amount, color))
 			else:
 				_land_hit(dst, amount, color)
+		PB.CombatEventKind.COMBAT_EVENT_KIND_MISS:
+			if src != null:
+				var miss_skill: PB.SkillInfo = _skills.get(ev.skill_id)
+				src.play_action(miss_skill.anim if miss_skill != null else NPC_ATTACK_ANIM)
+			if dst != null:
+				dst.show_number("Miss", Color(0.7, 0.7, 0.7))
 		PB.CombatEventKind.COMBAT_EVENT_KIND_DEATH:
 			if dst != null and ev.source_id == my_id and dst.is_npc():
 				_hud.show_message("%s defeated" % dst.display_name, Color(0.9, 0.85, 0.5))
@@ -398,6 +412,38 @@ func _fire_projectile(src: Character, dst: Character, on_hit: Callable) -> void:
 	tw.tween_property(orb, "global_position", end, clampf(src.chest().distance_to(end) / 30.0, 0.1, 0.6))
 	tw.tween_callback(on_hit)
 	tw.tween_callback(orb.queue_free)
+
+
+func _on_fate(ev: PB.FateEvent) -> void:
+	var effect := ""
+	match ev.action:
+		"treasure", "spoils", "cache_found":
+			effect = "Obtained: %s" % ev.item_name
+		"hidden_cache":
+			effect = "A hidden cache appeared nearby. Find the glowing light!"
+		"blessing":
+			effect = "Healed %d" % ev.amount
+		"insight":
+			effect = "+%d exp" % ev.amount
+		"critical":
+			effect = "Critical strike!"
+		"weakness":
+			effect = "Your target is weakened for %ds" % (ev.duration_ms / 1000)
+		"vigor_aura":
+			effect = "Aura of Vigor for %ds" % (ev.duration_ms / 1000)
+		"ambush":
+			effect = "Ambush! %d enemies" % ev.amount
+		"mishap":
+			effect = "-%d HP" % ev.amount
+		"fumble":
+			effect = "Your attack missed"
+		"enrage":
+			effect = "Your target is enraged for %ds" % (ev.duration_ms / 1000)
+		"ill_omen":
+			effect = "Ill Omen for %ds" % (ev.duration_ms / 1000)
+	_hud.show_fate(ev, effect)
+	if not ev.inventory.is_empty():
+		_hud.set_inventory(ev.inventory)
 
 
 func _on_status(s: PB.PlayerStatus) -> void:
@@ -443,7 +489,7 @@ func _update_target_visuals() -> void:
 
 
 func _update_hud() -> void:
-	_hud.debug_label.text = "%s  ·  entity %d  ·  visible %d  ·  rtt %d ms\nWASD move · click/Tab target · 1-2 skills · right-drag camera · Esc logout" % [
+	_hud.debug_label.text = "%s  ·  entity %d  ·  visible %d  ·  rtt %d ms\nWASD move · click/Tab target · 1-2 skills · I inventory · right-drag camera · Esc logout" % [
 		zone_id, my_id, _entities.size(), Net.rtt_ms]
 
 

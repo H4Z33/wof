@@ -1,0 +1,21 @@
+# Items. M1 has no item effects yet; Fate can grant them and they are kept
+# in the character's inventory.
+items:
+  - key: spirit_herb
+    name: Spirit Herb
+    rarity: common
+  - key: copper_coin_string
+    name: String of Copper Coins
+    rarity: common
+  - key: jade_token
+    name: Jade Token
+    rarity: uncommon
+  - key: qi_gathering_pill
+    name: Qi Gathering Pill
+    rarity: uncommon
+  - key: ancient_manual_fragment
+    name: Fragment of an Ancient Manual
+    rarity: rare
+  - key: phoenix_feather
+    name: Phoenix Feather
+    rarity: rare

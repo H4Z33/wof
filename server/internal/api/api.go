@@ -68,12 +68,14 @@ type characterJSON struct {
 	Model  string `json:"model"`
 	Level  int    `json:"level"`
 	ZoneID string `json:"zone_id"`
+	Luck   int    `json:"luck"`
+	Karma  int    `json:"karma"`
 }
 
 func toJSON(cs []model.Character) []characterJSON {
 	out := make([]characterJSON, 0, len(cs))
 	for _, c := range cs {
-		out = append(out, characterJSON{ID: c.ID, Name: c.Name, Model: c.Model, Level: c.Level, ZoneID: c.ZoneID})
+		out = append(out, characterJSON{ID: c.ID, Name: c.Name, Model: c.Model, Level: c.Level, ZoneID: c.ZoneID, Luck: c.Luck, Karma: c.Karma})
 	}
 	return out
 }
@@ -162,6 +164,7 @@ func (s *Server) createCharacter(w http.ResponseWriter, r *http.Request, account
 		Pos:       s.Start.Spawn,
 		Level:     1,
 		HP:        rules.MaxHP(1),
+		Luck:      rules.RollLuck(),
 	})
 	switch {
 	case errors.Is(err, account.ErrNameTaken):

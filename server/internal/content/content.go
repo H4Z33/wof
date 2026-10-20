@@ -64,16 +64,85 @@ type Zone struct {
 	NPCGroups   []NPCGroup `yaml:"npc_groups"`
 }
 
+type Item struct {
+	Key    string `yaml:"key"`
+	Name   string `yaml:"name"`
+	Rarity string `yaml:"rarity"`
+}
+
+// Fate configures the luck/karma event system (see content/fate.yaml).
+type FateTrigger struct {
+	Chance float64 `yaml:"chance"`
+	// travel: meters walked between rolls.
+	EveryM float64 `yaml:"every_m"`
+	// rest: seconds standing still before a roll.
+	AfterS float64 `yaml:"after_s"`
+	// wounded: fraction of max hp to fall below.
+	BelowHP float64 `yaml:"below_hp"`
+}
+
+type Fate struct {
+	Deck struct {
+		Size        int     `yaml:"size"`
+		RefillBelow int     `yaml:"refill_below"`
+		MinRefillS  float64 `yaml:"min_refill_s"`
+	} `yaml:"deck"`
+	CooldownS   float64                `yaml:"cooldown_s"`
+	Triggers    map[string]FateTrigger `yaml:"triggers"`
+	FortuneOdds struct {
+		LuckWeight  float64 `yaml:"luck_weight"`
+		KarmaWeight float64 `yaml:"karma_weight"`
+		Min         float64 `yaml:"min"`
+		Max         float64 `yaml:"max"`
+	} `yaml:"fortune_odds"`
+	Karma struct {
+		KillHostileNPC int `yaml:"kill_hostile_npc"`
+		Min            int `yaml:"min"`
+		Max            int `yaml:"max"`
+	} `yaml:"karma"`
+	// Items by magnitude (1-3) for treasure, spoils and hidden caches.
+	Loot    map[int][]string       `yaml:"loot"`
+	Actions map[string]*FateAction `yaml:"actions"`
+}
+
+// FateAction is one entry of the catalog in content/fate.yaml. Only the
+// fields its kind uses are set.
+type FateAction struct {
+	Omen     string   `yaml:"omen"` // fortune or misfortune
+	Triggers []string `yaml:"triggers"`
+
+	ExpPerMagnitude    int        `yaml:"exp_per_magnitude"`
+	DurationS          float64    `yaml:"duration_s"`
+	BonusPerMagnitude  float64    `yaml:"bonus_per_magnitude"`
+	HPLossPerMagnitude float64    `yaml:"hp_loss_per_magnitude"`
+	DistanceM          [2]float64 `yaml:"distance_m"`
+	ExpireS            float64    `yaml:"expire_s"`
+	NPC                string     `yaml:"npc"`
+}
+
+// Action kinds the zone knows how to carry out, and the triggers it raises.
+var (
+	FateActionKinds = map[string]bool{
+		"treasure": true, "blessing": true, "insight": true, "critical": true, "weakness": true,
+		"vigor_aura": true, "hidden_cache": true, "spoils": true,
+		"ambush": true, "mishap": true, "fumble": true, "enrage": true, "ill_omen": true,
+	}
+	FateTriggers = map[string]bool{"strike": true, "kill": true, "travel": true, "rest": true, "wounded": true}
+)
+
 type Content struct {
 	Skills map[uint32]*Skill
 	NPCs   map[string]*NPC
 	Zones  map[string]*Zone
+	Items  map[string]*Item
+	// Fate is nil when content/fate.yaml is absent.
+	Fate *Fate
 }
 
 // Load reads dir/skills.yaml, dir/npcs/*.yaml, dir/zones/*.yaml and the AI
 // scripts they reference.
 func Load(dir string) (*Content, error) {
-	c := &Content{Skills: map[uint32]*Skill{}, NPCs: map[string]*NPC{}, Zones: map[string]*Zone{}}
+	c := &Content{Skills: map[uint32]*Skill{}, NPCs: map[string]*NPC{}, Zones: map[string]*Zone{}, Items: map[string]*Item{}}
 
 	var skills struct {
 		Skills []*Skill `yaml:"skills"`
@@ -111,6 +180,24 @@ func Load(dir string) (*Content, error) {
 		c.Zones[z.ID] = z
 	}
 
+	var items struct {
+		Items []*Item `yaml:"items"`
+	}
+	if err := readYAML(filepath.Join(dir, "items.yaml"), &items); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	for _, it := range items.Items {
+		c.Items[it.Key] = it
+	}
+
+	fate := &Fate{}
+	switch err := readYAML(filepath.Join(dir, "fate.yaml"), fate); {
+	case err == nil:
+		c.Fate = fate
+	case !errors.Is(err, os.ErrNotExist):
+		return nil, err
+	}
+
 	return c, c.validate()
 }
 
@@ -138,6 +225,50 @@ func (c *Content) validate() error {
 		for i, g := range z.NPCGroups {
 			if _, ok := c.NPCs[g.NPC]; !ok {
 				errs = append(errs, fmt.Errorf("zone %s group %d: unknown npc %q", id, i, g.NPC))
+			}
+		}
+	}
+	if f := c.Fate; f != nil {
+		if f.Deck.Size <= 0 || f.Deck.RefillBelow < 0 || f.Deck.MinRefillS < 0 || f.CooldownS < 0 {
+			errs = append(errs, errors.New("fate: deck size must be positive; refill and cooldown not negative"))
+		}
+		for name, t := range f.Triggers {
+			if !FateTriggers[name] {
+				errs = append(errs, fmt.Errorf("fate: unknown trigger %q", name))
+			}
+			if t.Chance < 0 || t.Chance > 1 {
+				errs = append(errs, fmt.Errorf("fate: trigger %s chance must be in [0,1]", name))
+			}
+		}
+		for name, a := range f.Actions {
+			if !FateActionKinds[name] {
+				errs = append(errs, fmt.Errorf("fate: action %q is not implemented by the server", name))
+			}
+			if a.Omen != "fortune" && a.Omen != "misfortune" {
+				errs = append(errs, fmt.Errorf("fate: action %s: omen must be fortune or misfortune", name))
+			}
+			if len(a.Triggers) == 0 {
+				errs = append(errs, fmt.Errorf("fate: action %s: needs at least one trigger", name))
+			}
+			for _, t := range a.Triggers {
+				if _, ok := f.Triggers[t]; !ok {
+					errs = append(errs, fmt.Errorf("fate: action %s: trigger %q is not configured", name, t))
+				}
+			}
+			if a.NPC != "" {
+				if _, ok := c.NPCs[a.NPC]; !ok {
+					errs = append(errs, fmt.Errorf("fate: action %s: unknown npc %q", name, a.NPC))
+				}
+			}
+		}
+		for mag := 1; mag <= 3; mag++ {
+			if len(f.Loot[mag]) == 0 {
+				errs = append(errs, fmt.Errorf("fate: loot table for magnitude %d is empty", mag))
+			}
+			for _, key := range f.Loot[mag] {
+				if _, ok := c.Items[key]; !ok {
+					errs = append(errs, fmt.Errorf("fate: loot %d: unknown item %q", mag, key))
+				}
 			}
 		}
 	}

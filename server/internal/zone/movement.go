@@ -18,6 +18,9 @@ func (z *Zone) applyInputs(p *player, dt float64) {
 		}
 		p.credit--
 		p.lastSeq = in.Seq
+		// Every input the player makes feeds their fate rolls.
+		p.entropy.Mix(uint64(in.Seq), uint64(math.Float32bits(in.DirX))<<32|uint64(math.Float32bits(in.DirZ)),
+			uint64(math.Float32bits(in.Yaw)), uint64(z.tick.Load()))
 		if !e.alive() {
 			continue // acknowledged, but the dead do not walk
 		}

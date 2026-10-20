@@ -18,6 +18,14 @@ var _message_tween: Tween
 var _death: Label
 var _skill_buttons := {}  # skill id -> Button
 var _skill_names := {}
+var _stats_label: Label
+var _fate_panel: PanelContainer
+var _fate_title: Label
+var _fate_text: Label
+var _fate_effect: Label
+var _fate_tween: Tween
+var _inventory_panel: PanelContainer
+var _inventory_list: Label
 
 signal skill_pressed(skill_id: int)
 
@@ -69,6 +77,13 @@ func _ready() -> void:
 	_outline(_message)
 	bottom.add_child(_message)
 
+	_stats_label = Label.new()
+	_stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_stats_label.add_theme_font_size_override("font_size", 13)
+	_stats_label.modulate = Color(0.85, 0.85, 1.0)
+	_outline(_stats_label)
+	bottom.add_child(_stats_label)
+
 	_level_label = Label.new()
 	_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_outline(_level_label)
@@ -102,6 +117,53 @@ func _ready() -> void:
 	_death.hide()
 	add_child(_death)
 
+	# Fate banner, upper middle of the screen.
+	_fate_panel = PanelContainer.new()
+	_fate_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_fate_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_fate_panel.offset_top = 110
+	var fstyle := StyleBoxFlat.new()
+	fstyle.bg_color = Color(0.05, 0.05, 0.08, 0.78)
+	fstyle.set_corner_radius_all(6)
+	fstyle.set_content_margin_all(14)
+	_fate_panel.add_theme_stylebox_override("panel", fstyle)
+	var fbox := VBoxContainer.new()
+	fbox.custom_minimum_size = Vector2(520, 0)
+	_fate_panel.add_child(fbox)
+	_fate_title = Label.new()
+	_fate_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_fate_title.add_theme_font_size_override("font_size", 14)
+	fbox.add_child(_fate_title)
+	_fate_text = Label.new()
+	_fate_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_fate_text.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_fate_text.add_theme_font_size_override("font_size", 19)
+	fbox.add_child(_fate_text)
+	_fate_effect = Label.new()
+	_fate_effect.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_fate_effect.add_theme_font_size_override("font_size", 14)
+	fbox.add_child(_fate_effect)
+	_fate_panel.hide()
+	add_child(_fate_panel)
+
+	# Inventory (I), right side.
+	_inventory_panel = PanelContainer.new()
+	_inventory_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT)
+	_inventory_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_inventory_panel.offset_right = -14
+	var ibox := VBoxContainer.new()
+	ibox.custom_minimum_size = Vector2(240, 0)
+	_inventory_panel.add_child(ibox)
+	var ititle := Label.new()
+	ititle.text = "Inventory"
+	ititle.add_theme_font_size_override("font_size", 16)
+	ibox.add_child(ititle)
+	_inventory_list = Label.new()
+	_inventory_list.text = "Empty"
+	ibox.add_child(_inventory_list)
+	_inventory_panel.hide()
+	add_child(_inventory_panel)
+
 
 func set_skills(skills: Array) -> void:
 	var box: HBoxContainer = find_child("Skills", true, false)
@@ -133,6 +195,7 @@ func set_status(s: PB.PlayerStatus) -> void:
 	_exp_bar.max_value = maxi(s.exp_to_next, 1)
 	_exp_bar.value = s.exp
 	_level_label.text = "Level %d   ·   %d / %d exp" % [s.level, s.exp, s.exp_to_next]
+	_stats_label.text = "Luck %d   ·   Karma %+d" % [s.luck, s.karma]
 	if s.hp == 0:
 		_death.text = "You died. Respawning in %d..." % ceili(s.respawn_in_ms / 1000.0)
 		_death.show()
@@ -147,10 +210,43 @@ func set_target(target) -> void:
 		return
 	_target_panel.show()
 	var lvl: String = "  Lv %d" % target.level if target.is_npc() else ""
-	_target_name.text = target.display_name + lvl
+	var fx: PackedStringArray = target.effect_names()
+	_target_name.text = target.display_name + lvl + ("   [%s]" % ", ".join(fx) if not fx.is_empty() else "")
 	_target_hp.max_value = maxi(target.max_hp, 1)
 	_target_hp.value = target.hp
 	_target_hp_text.text = "%d / %d" % [target.hp, target.max_hp] if target.hp > 0 else "Dead"
+
+
+## Shows a Fate event: who would read it as fortune or misfortune, the
+## narration, and what actually changed.
+func show_fate(ev: PB.FateEvent, effect_text: String) -> void:
+	var fortune := ev.omen == PB.FateOmen.FATE_OMEN_FORTUNE
+	var strength: String = ["", "", "Great ", "Heavenly "][clampi(ev.magnitude, 0, 3)]
+	_fate_title.text = "✦ %s%s ✦" % [strength, "Fortune" if fortune else "Misfortune"]
+	_fate_title.modulate = Color(1.0, 0.82, 0.35) if fortune else Color(0.75, 0.55, 1.0)
+	_fate_text.text = ev.narration
+	_fate_effect.text = effect_text
+	_fate_effect.modulate = _fate_title.modulate
+	_fate_panel.modulate.a = 0.0
+	_fate_panel.show()
+	if _fate_tween != null:
+		_fate_tween.kill()
+	_fate_tween = create_tween()
+	_fate_tween.tween_property(_fate_panel, "modulate:a", 1.0, 0.4)
+	_fate_tween.tween_interval(6.0)
+	_fate_tween.tween_property(_fate_panel, "modulate:a", 0.0, 1.0)
+	_fate_tween.tween_callback(_fate_panel.hide)
+
+
+func set_inventory(items: Array) -> void:
+	var lines := PackedStringArray()
+	for it in items:
+		lines.append("%s  ×%d" % [it.name, it.quantity])
+	_inventory_list.text = "\n".join(lines) if not lines.is_empty() else "Empty"
+
+
+func toggle_inventory() -> void:
+	_inventory_panel.visible = not _inventory_panel.visible
 
 
 func show_message(text: String, color := Color.WHITE) -> void:

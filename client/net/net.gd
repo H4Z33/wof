@@ -8,6 +8,7 @@ extends Node
 signal welcomed(welcome: PB.Welcome)
 signal snapshot_received(snapshot: PB.Snapshot)
 signal skill_rejected(skill_id: int, reason: String)
+signal fate_received(event: PB.FateEvent)
 signal disconnected(reason: String)
 
 const PB := preload("res://gen/convergence/v1/world.pb.gd")
@@ -187,6 +188,8 @@ func _dispatch(bytes: PackedByteArray) -> void:
 			welcomed.emit(msg.welcome)
 		"skill_rejected":
 			skill_rejected.emit(msg.skill_rejected.skill_id, msg.skill_rejected.reason)
+		"fate":
+			fate_received.emit(msg.fate)
 		"pong":
 			rtt_ms = Time.get_ticks_msec() - msg.pong.client_time_ms
 		"error":

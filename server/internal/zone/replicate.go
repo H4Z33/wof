@@ -16,7 +16,7 @@ func (z *Zone) replicate(tick uint32) {
 		}
 		s := &pb.EntityState{
 			Id: e.id, Pos: vec(e.pos), Yaw: float32(e.yaw), Moving: e.moving,
-			Hp: uint32(e.hp), MaxHp: uint32(e.maxHP),
+			Hp: uint32(e.hp), MaxHp: uint32(e.maxHP), Effects: e.effectFlags(tick),
 		}
 		states[e.id] = s
 		return s
@@ -62,6 +62,8 @@ func (z *Zone) status(p *player) *pb.PlayerStatus {
 		ExpToNext: uint64(rules.ExpToNext(p.e.level)),
 		Hp:        uint32(p.e.hp),
 		MaxHp:     uint32(p.e.maxHP),
+		Luck:      uint32(p.luck),
+		Karma:     int32(p.karma),
 	}
 	if p.deadUntil != 0 {
 		if now := z.tick.Load(); p.deadUntil > now {

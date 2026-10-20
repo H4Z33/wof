@@ -7,13 +7,30 @@ option go_package = "convergence/server/gen/convergence/v1;convergencev1";
 // Bump when a change breaks older clients. The server rejects mismatches in Hello.
 enum ProtocolVersion {
   PROTOCOL_VERSION_UNSPECIFIED = 0;
-  PROTOCOL_VERSION_CURRENT = 2;
+  PROTOCOL_VERSION_CURRENT = 4;
+}
+
+enum FateOmen {
+  FATE_OMEN_UNSPECIFIED = 0;
+  FATE_OMEN_FORTUNE = 1;
+  FATE_OMEN_MISFORTUNE = 2;
 }
 
 enum EntityKind {
   ENTITY_KIND_UNSPECIFIED = 0;
   ENTITY_KIND_PLAYER = 1;
   ENTITY_KIND_NPC = 2;
+  // Things in the world, like a hidden cache revealed by Fate.
+  ENTITY_KIND_OBJECT = 3;
+}
+
+// Bit flags in EntityState.effects.
+enum EffectFlag {
+  EFFECT_FLAG_UNSPECIFIED = 0;
+  EFFECT_FLAG_VIGOR = 1;     // deals more damage
+  EFFECT_FLAG_WEAKENED = 2;  // takes more damage
+  EFFECT_FLAG_ENRAGED = 4;   // deals more damage (enemy)
+  EFFECT_FLAG_ILL_OMEN = 8;  // deals less damage
 }
 
 enum CombatEventKind {
@@ -22,6 +39,8 @@ enum CombatEventKind {
   COMBAT_EVENT_KIND_DAMAGE = 1;
   // The target died from this hit.
   COMBAT_EVENT_KIND_DEATH = 2;
+  // The attack missed (amount = 0).
+  COMBAT_EVENT_KIND_MISS = 3;
 }
 
 message Vec3 {
@@ -86,6 +105,7 @@ message ServerMessage {
     Pong pong = 12;
     ServerError error = 13;
     SkillRejected skill_rejected = 14;
+    FateEvent fate = 15;
   }
 }
 
@@ -102,6 +122,13 @@ message Welcome {
   repeated SkillInfo skills = 8;
   PlayerStatus status = 9;
   string character_name = 10;
+  repeated InventoryItem inventory = 11;
+}
+
+message InventoryItem {
+  string key = 1;
+  string name = 2;
+  uint32 quantity = 3;
 }
 
 // What the client needs to show a skill and predict its cooldown.
@@ -124,6 +151,8 @@ message PlayerStatus {
   uint32 max_hp = 5;
   // While dead: time until respawn.
   uint32 respawn_in_ms = 6;
+  uint32 luck = 7;
+  sint32 karma = 8;
 }
 
 message EntityState {
@@ -133,6 +162,8 @@ message EntityState {
   bool moving = 4;
   uint32 hp = 5;
   uint32 max_hp = 6;
+  // EffectFlag bits.
+  uint32 effects = 7;
 }
 
 message EntitySpawn {
@@ -151,6 +182,7 @@ message CombatEvent {
   uint32 target_id = 3;
   uint32 skill_id = 4;
   uint32 amount = 5;
+  bool critical = 6;
 }
 
 // Sent every tick. Spawns and despawns are relative to what this client
@@ -165,6 +197,26 @@ message Snapshot {
   // Combat this tick involving entities this client can see.
   repeated CombatEvent events = 6;
   PlayerStatus status = 7;
+}
+
+// Something Fate made happen to this player. The narration comes from the
+// Fate agent (or a fallback line); the effect was already applied.
+message FateEvent {
+  FateOmen omen = 1;
+  // 1 (minor) to 3 (major).
+  uint32 magnitude = 2;
+  // A fate action from content/fate.yaml, or cache_found.
+  string action = 3;
+  string narration = 4;
+  // Items: the item found. insight: exp gained. mishap: hp lost.
+  string item_name = 5;
+  uint32 amount = 6;
+  // Full inventory after the event, when it changed.
+  repeated InventoryItem inventory = 7;
+  // What set it off: strike, kill, travel, rest, wounded (or cache_found).
+  string trigger = 8;
+  // For effects that last: how long.
+  uint32 duration_ms = 9;
 }
 
 message SkillRejected {

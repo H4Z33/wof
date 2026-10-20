@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 
 	pb "convergence/server/gen/convergence/v1"
 	"convergence/server/internal/content"
@@ -11,26 +12,18 @@ import (
 )
 
 func (z *Zone) spawnGroups(zc *content.Zone) error {
-	loaded := map[string]bool{}
 	for _, g := range zc.NPCGroups {
 		def, ok := z.content.NPCs[g.NPC]
 		if !ok {
 			return fmt.Errorf("zone %s: unknown npc %q", zc.ID, g.NPC)
 		}
-		if !loaded[def.AI] {
-			if err := z.lua.Load(def.AI, def.AISource); err != nil {
-				return err
-			}
-			loaded[def.AI] = true
-		}
+		z.places = append(z.places, place{center: g.Center, radius: g.Radius + 12, name: "near a " + strings.ToLower(def.Name) + " camp"})
 		for range g.Count {
-			n := &npc{z: z, def: def, groupCenter: g.Center, groupRadius: g.Radius}
-			brain, err := z.lua.NewBrain(def.AI, n)
+			n, err := z.newNPC(def)
 			if err != nil {
 				return err
 			}
-			n.brain = brain
-			n.e = &entity{}
+			n.groupCenter, n.groupRadius = g.Center, g.Radius
 			z.respawnNPC(n)
 			z.npcs = append(z.npcs, n)
 		}
@@ -38,11 +31,32 @@ func (z *Zone) spawnGroups(zc *content.Zone) error {
 	return nil
 }
 
+// newNPC creates an NPC with its AI brain, loading the script on first use.
+func (z *Zone) newNPC(def *content.NPC) (*npc, error) {
+	if !z.aiLoaded[def.AI] {
+		if err := z.lua.Load(def.AI, def.AISource); err != nil {
+			return nil, err
+		}
+		z.aiLoaded[def.AI] = true
+	}
+	n := &npc{z: z, def: def, e: &entity{}}
+	brain, err := z.lua.NewBrain(def.AI, n)
+	if err != nil {
+		return nil, err
+	}
+	n.brain = brain
+	return n, nil
+}
+
 // respawnNPC (re)creates the NPC's entity at a random point of its area,
 // under a new entity id so clients never confuse it with the old body.
 func (z *Zone) respawnNPC(n *npc) {
+	z.placeNPC(n, randomAround([3]float64{n.groupCenter[0], 0, n.groupCenter[1]}, n.groupRadius))
+}
+
+// placeNPC puts a fresh body for n into the world at pos.
+func (z *Zone) placeNPC(n *npc, pos [3]float64) {
 	d := n.def
-	pos := randomAround([3]float64{n.groupCenter[0], 0, n.groupCenter[1]}, n.groupRadius)
 	n.e = &entity{
 		id:    z.newID(),
 		kind:  pb.EntityKind_ENTITY_KIND_NPC,
@@ -152,7 +166,7 @@ func (n *npc) Attack(id uint32) bool {
 	}
 	n.nextAttack = tick + z.ticks(n.def.Attack.CooldownMS)
 	n.e.yaw = yawToward(n.e.pos, t.pos)
-	z.damage(n.e, t, 0, roll(n.def.Attack.Damage))
+	z.damage(n.e, t, 0, float64(roll(n.def.Attack.Damage)), false)
 	return true
 }
 

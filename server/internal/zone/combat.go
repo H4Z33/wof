@@ -5,6 +5,7 @@ import (
 
 	pb "convergence/server/gen/convergence/v1"
 	"convergence/server/internal/content"
+	"convergence/server/internal/fate"
 	"convergence/server/internal/rules"
 )
 
@@ -49,21 +50,46 @@ func (z *Zone) useSkill(p *player, req *pb.UseSkill) {
 	}
 	p.cooldowns[sk.ID] = tick + z.ticks(sk.CooldownMS)
 	p.e.yaw = yawToward(p.e.pos, t.pos)
-	amount := float64(roll(sk.Damage)) * rules.DamageMultiplier(p.e.level)
-	z.damage(p.e, t, sk.ID, int(amount+0.5))
+	p.entropy.Mix(uint64(sk.ID), uint64(t.id), uint64(tick))
+
+	// Fate may turn this very blow into a critical hit or a miss.
+	mult, miss := 1.0, false
+	if card, ok := z.fateTrigger(p, fate.TriggerStrike, t); ok {
+		mult, miss = z.applyCard(p, card, t)
+	}
+	if miss {
+		z.events = append(z.events, &pb.CombatEvent{
+			Kind: pb.CombatEventKind_COMBAT_EVENT_KIND_MISS, SourceId: p.e.id, TargetId: t.id, SkillId: sk.ID,
+		})
+		return
+	}
+	amount := float64(roll(sk.Damage)) * rules.DamageMultiplier(p.e.level) * mult
+	z.damage(p.e, t, sk.ID, amount, mult > 1)
 }
 
 func roll(r content.Range) int { return r[0] + rand.IntN(r[1]-r[0]+1) }
 
-func (z *Zone) damage(src, t *entity, skillID uint32, amount int) {
-	amount = max(1, min(amount, t.hp))
+// damage applies base damage, scaled by both sides' active effects.
+func (z *Zone) damage(src, t *entity, skillID uint32, base float64, critical bool) {
+	tick := z.tick.Load()
+	dealt, _ := src.multipliers(tick)
+	_, taken := t.multipliers(tick)
+	amount := max(1, min(int(base*dealt*taken+0.5), t.hp))
 	t.hp -= amount
-	t.lastDamagedTick = z.tick.Load()
+	t.lastDamagedTick = tick
 	z.events = append(z.events, &pb.CombatEvent{
-		Kind: pb.CombatEventKind_COMBAT_EVENT_KIND_DAMAGE, SourceId: src.id, TargetId: t.id, SkillId: skillID, Amount: uint32(amount),
+		Kind: pb.CombatEventKind_COMBAT_EVENT_KIND_DAMAGE, SourceId: src.id, TargetId: t.id, SkillId: skillID,
+		Amount: uint32(amount), Critical: critical,
 	})
-	if t.player != nil {
-		t.player.dirty = true
+	if p := t.player; p != nil {
+		p.dirty = true
+		if f := z.content.Fate; f != nil && p.woundArmed && t.hp > 0 &&
+			float64(t.hp) < f.Triggers[fate.TriggerWounded].BelowHP*float64(t.maxHP) {
+			p.woundArmed = false
+			if card, ok := z.fateTrigger(p, fate.TriggerWounded, src); ok {
+				z.applyCard(p, card, src)
+			}
+		}
 	}
 	if t.npc != nil && t.npc.target == 0 && t.hp > 0 {
 		t.npc.target = src.id // fight back
@@ -83,11 +109,19 @@ func (z *Zone) kill(killer, t *entity) {
 		n.target, n.chaseID, n.hasGoal = 0, 0, false
 		n.corpseUntil = tick + z.ticks(corpseMS)
 		n.respawnAt = tick + z.ticks(n.def.RespawnMS)
-		if killer.player != nil {
-			z.grantExp(killer.player, int64(n.def.Exp))
+		if kp := killer.player; kp != nil {
+			z.grantExp(kp, int64(n.def.Exp))
+			kp.kills++
+			if f := z.content.Fate; f != nil {
+				z.addKarma(kp, f.Karma.KillHostileNPC)
+			}
+			if card, ok := z.fateTrigger(kp, fate.TriggerKill, t); ok {
+				z.applyCard(kp, card, t)
+			}
 		}
 	}
 	if p := t.player; p != nil {
+		p.deaths++
 		p.deadUntil = tick + z.ticks(int(z.cfg.RespawnDelay.Milliseconds()))
 		p.pending = p.pending[:0]
 		z.log.Info("player died", "player", describe(t), "killer", describe(killer))
@@ -128,14 +162,29 @@ func (z *Zone) updateLife(tick uint32) {
 			p.dirty = true
 		}
 	}
+	if tick%uint32(z.cfg.TickRate) == 0 {
+		for _, e := range z.entities {
+			pruneEffects(e, tick)
+		}
+	}
+	kept := z.npcs[:0]
 	for _, n := range z.npcs {
 		e := n.e
 		switch {
 		case e.inWorld && e.hp == 0 && tick >= n.corpseUntil:
 			z.grid.remove(e)
 			delete(z.entities, e.id)
-		case !e.inWorld && tick >= n.respawnAt:
+		case n.temporary && e.alive() && tick >= n.expireAt:
+			z.grid.remove(e) // the ambush gives up and melts away
+			delete(z.entities, e.id)
+		case !e.inWorld && !n.temporary && tick >= n.respawnAt:
 			z.respawnNPC(n)
 		}
+		if n.temporary && !e.inWorld {
+			continue // gone for good
+		}
+		kept = append(kept, n)
 	}
+	clear(z.npcs[len(kept):])
+	z.npcs = kept
 }
