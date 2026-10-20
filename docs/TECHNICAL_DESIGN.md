@@ -226,7 +226,32 @@ zone ──DeckRequest──▶ Director ──▶ Ollama model     trigger: str
 
 PoC shortcuts to revisit: inventory is a JSONB column (moves to an item table with the ledger in M4); items have no effects yet; temporary effects are damage multipliers only.
 
-### 5.7 Persistence strategy
+### 5.7 M3: Fable-style action gameplay
+
+Direction set on 2026-10-20: play should feel like *Fable: The Lost Chapters*, with *Ragnarok Online*-style divergent builds.
+
+**Action combat (replaces tab-target).**
+- Inputs are part of `MoveInput` (one per tick): held buttons (attack, block), roll presses, facing and lock-on target. Server and client run the same per-tick state machine, so prediction includes rolls, blocking slowdowns and swing recovery.
+- Weapon by class: sword (melee arc), gun (shots along the aim), staff (spirit bolts). Click attacks; holding past the swing charges a *flourish* (stronger, wider). Block (hold) reduces frontal damage and slows you. Roll dashes with short invulnerability.
+- Melee hits are checked in an arc in front of the attacker against NPC positions rewound by the client's interpolation delay (lag compensation). Ranged hits take the first enemy along the aim ray within range.
+- NPC attacks have a wind-up (telegraphed by animation) before they resolve: rolling through them or blocking them works.
+- **Combat multiplier**: consecutive hits without taking damage raise a multiplier (up to ×5) on experience; any unblocked hit resets it.
+- Class skills remain as abilities (keys 1-4), cast at the locked target or the nearest enemy in front.
+
+**Disciplines (Fable) with divergent builds (Ragnarok).**
+- Three disciplines earn their own experience by how you fight: Strength (melee), Skill (ranged), Will (abilities). General level still comes from total experience.
+- Each discipline has two attributes bought with its experience: Strength → Physique (melee damage), Toughness (health, block); Skill → Agility (attack speed, roll), Accuracy (ranged damage, crits); Will → Spirit (ability power), Focus (resource pool and regen). Luck stays fixed and feeds Fate.
+- Class affinity makes builds diverge: the class's discipline costs ×1 and caps high; the others cost more and cap lower.
+- At a rank threshold in the class discipline the player picks one of two exclusive specializations (second job), each unlocking abilities.
+
+**Morality, renown, titles.**
+- Karma bands show on the character for everyone: a halo and golden motes when good, horns and a dark aura when evil, growing with magnitude.
+- Renown rises with deeds (kills scaled by level, quests, Fate events); thresholds unlock titles shown on the nameplate. Villagers react to renown and alignment (cheer, greet, cower).
+
+**Village and quests.**
+- A village by the spawn with villager NPCs (wander, react) and a quest giver. Quests (`content/quests/*.yaml`) have objectives (defeat N of an NPC, reach a place), rewards (experience, discipline experience, renown, karma, items) and, for some, a good/evil choice at the end. Quest state persists per character.
+
+### 5.8 Persistence strategy
 
 - Character state lives in memory in the zone; **write-behind** every ~30 s for dirty characters, plus immediately on logout, zone transfer and any economic transaction.
 - Schema managed by `goose` migrations embedded in the server binary and applied at startup; queries are hand-written, parameterized `pgx` calls in `internal/account` (revisit `sqlc` once a cgo-capable CI exists).

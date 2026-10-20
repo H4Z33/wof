@@ -76,9 +76,30 @@ type Class struct {
 		Color     string  `yaml:"color"`
 	} `yaml:"resource"`
 	Skills []string `yaml:"skills"`
+	Weapon Weapon   `yaml:"weapon"`
 
 	// SkillIDs resolves Skills, in order.
 	SkillIDs []uint32 `yaml:"-"`
+}
+
+// Weapon is a class's basic attack (left click) and its charged flourish.
+type Weapon struct {
+	Name           string  `yaml:"name"`
+	Kind           string  `yaml:"kind"`       // melee or ranged
+	Discipline     string  `yaml:"discipline"` // strength, skill or will
+	Damage         Range   `yaml:"damage"`
+	Range          float64 `yaml:"range"`
+	ArcDeg         float64 `yaml:"arc_deg"`
+	SwingMS        int     `yaml:"swing_ms"`
+	HitMS          int     `yaml:"hit_ms"`
+	FlourishMult   float64 `yaml:"flourish_mult"`
+	FlourishArcDeg float64 `yaml:"flourish_arc_deg"`
+	FlourishRange  float64 `yaml:"flourish_range"`
+	FlourishRadius float64 `yaml:"flourish_radius"`
+	Gain           int     `yaml:"gain"`
+	Anim           string  `yaml:"anim"`
+	FlourishAnim   string  `yaml:"flourish_anim"`
+	VFX            string  `yaml:"vfx"`
 }
 
 // MaxHP is the class's maximum health at a level.
@@ -96,6 +117,8 @@ type NPCAttack struct {
 	Anim       string `yaml:"anim"`
 	VFX        string `yaml:"vfx"`
 	Projectile bool   `yaml:"projectile"`
+	// Telegraph time before the attack lands (default 450 ms).
+	WindupMS int `yaml:"windup_ms"`
 }
 
 type NPC struct {
@@ -367,6 +390,17 @@ func (c *Content) validate() error {
 		}
 		if cl.HP.Base <= 0 || cl.Resource.Max <= 0 || len(cl.Skills) == 0 {
 			errs = append(errs, fmt.Errorf("class %s: needs hp, a resource and skills", key))
+		}
+		w := cl.Weapon
+		if (w.Kind != "melee" && w.Kind != "ranged") || w.Range <= 0 || w.SwingMS <= 0 || w.HitMS <= 0 ||
+			w.HitMS >= w.SwingMS || w.Damage[0] <= 0 || w.Damage[1] < w.Damage[0] || w.FlourishMult < 1 {
+			errs = append(errs, fmt.Errorf("class %s: weapon needs kind, range, damage, swing_ms > hit_ms > 0 and flourish_mult >= 1", key))
+		}
+		if w.Kind == "melee" && w.ArcDeg <= 0 {
+			errs = append(errs, fmt.Errorf("class %s: melee weapon needs arc_deg", key))
+		}
+		if w.Discipline != "strength" && w.Discipline != "skill" && w.Discipline != "will" {
+			errs = append(errs, fmt.Errorf("class %s: weapon discipline must be strength, skill or will", key))
 		}
 		cl.SkillIDs = cl.SkillIDs[:0]
 		for _, sk := range cl.Skills {

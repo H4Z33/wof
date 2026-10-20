@@ -32,7 +32,11 @@ func (z *Zone) applyInputs(p *player, dt float64) {
 		} else if math.IsNaN(l) {
 			dx, dz = 0, 0
 		}
-		step := z.cfg.MoveSpeed * dt
+		speed, rollDir, override := z.stepAction(p, in)
+		if override {
+			dx, dz = rollDir[0], rollDir[1]
+		}
+		step := z.cfg.MoveSpeed * speed * dt
 		e.pos = z.walk(e.pos, dx*step, dz*step)
 		if y := float64(in.Yaw); !math.IsNaN(y) && !math.IsInf(y, 0) {
 			e.yaw = math.Remainder(y, 2*math.Pi)
@@ -52,8 +56,8 @@ func (z *Zone) applyInputs(p *player, dt float64) {
 // moveNPC walks an NPC toward its chase target or goal point.
 func (z *Zone) moveNPC(n *npc, dt float64) {
 	e := n.e
-	if !e.alive() || e.stunned(z.tick.Load()) {
-		e.moving = false
+	if !e.alive() || e.stunned(z.tick.Load()) || n.strike != nil {
+		e.moving = false // winding up an attack: stand and telegraph it
 		return
 	}
 	var goal [3]float64

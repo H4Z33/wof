@@ -7,7 +7,7 @@ option go_package = "convergence/server/gen/convergence/v1;convergencev1";
 // Bump when a change breaks older clients. The server rejects mismatches in Hello.
 enum ProtocolVersion {
   PROTOCOL_VERSION_UNSPECIFIED = 0;
-  PROTOCOL_VERSION_CURRENT = 7;
+  PROTOCOL_VERSION_CURRENT = 8;
 }
 
 enum FateOmen {
@@ -38,6 +38,27 @@ enum EffectFlag {
   EFFECT_FLAG_REGEN = 256;   // heals over time
 }
 
+// Held/pressed buttons, as bits in MoveInput.buttons.
+enum InputButton {
+  INPUT_BUTTON_UNSPECIFIED = 0;
+  INPUT_BUTTON_ATTACK = 1;  // held
+  INPUT_BUTTON_BLOCK = 2;   // held
+  INPUT_BUTTON_ROLL = 4;    // pressed this tick
+}
+
+// What an entity is doing, for animation. Players run the same state
+// machine on client and server (see zone/action.go and world.gd).
+enum ActionState {
+  ACTION_STATE_UNSPECIFIED = 0;  // idle
+  ACTION_STATE_SWING = 1;     // weapon attack (swing or shot)
+  ACTION_STATE_FLOURISH = 2;  // the charged attack
+  ACTION_STATE_CHARGING = 3;  // holding attack to charge a flourish
+  ACTION_STATE_BLOCK = 4;
+  ACTION_STATE_ROLL = 5;
+  ACTION_STATE_WINDUP = 6;      // NPC telegraphing an attack
+  ACTION_STATE_SLAM_WINDUP = 7; // NPC telegraphing an area attack
+}
+
 enum CombatEventKind {
   COMBAT_EVENT_KIND_UNSPECIFIED = 0;
   // amount = damage dealt.
@@ -48,6 +69,10 @@ enum CombatEventKind {
   COMBAT_EVENT_KIND_MISS = 3;
   // amount = health restored.
   COMBAT_EVENT_KIND_HEAL = 4;
+  // Hit taken on a block; amount = damage that got through.
+  COMBAT_EVENT_KIND_BLOCKED = 5;
+  // Avoided by rolling.
+  COMBAT_EVENT_KIND_DODGED = 6;
 }
 
 message Vec3 {
@@ -85,8 +110,12 @@ message MoveInput {
   // Desired direction on the ground plane. The server clamps the length to 1.
   float dir_x = 2;
   float dir_z = 3;
-  // Facing in radians around the Y axis.
+  // Facing in radians around the Y axis (attacks go this way).
   float yaw = 4;
+  // InputButton bits.
+  uint32 buttons = 5;
+  // Locked-on enemy (0 = none); ranged attacks aim at it.
+  uint32 lock_target = 6;
 }
 
 message Ping {
@@ -133,6 +162,33 @@ message Welcome {
   // Absent for a flat zone.
   TerrainInfo terrain = 12;
   ClassInfo class_info = 13;
+  WeaponInfo weapon = 14;
+  ActionRules action_rules = 15;
+}
+
+message WeaponInfo {
+  string name = 1;
+  // melee or ranged.
+  string kind = 2;
+  float range = 3;
+  float arc_deg = 4;
+  string anim = 5;
+  string flourish_anim = 6;
+  string vfx = 7;
+}
+
+// Timings and speeds of the player action state machine, in ticks, so the
+// client predicts exactly what the server does.
+message ActionRules {
+  uint32 swing_ticks = 1;
+  uint32 flourish_ticks = 2;
+  uint32 charge_ticks = 3;
+  uint32 roll_ticks = 4;
+  uint32 roll_cooldown_ticks = 5;
+  float roll_speed = 6;
+  float block_speed = 7;
+  float swing_speed = 8;
+  float charge_speed = 9;
 }
 
 message ClassInfo {
@@ -196,6 +252,9 @@ message PlayerStatus {
   sint32 karma = 8;
   uint32 resource = 9;
   uint32 resource_max = 10;
+  // Combat multiplier on experience (1 = none) and the hit streak behind it.
+  float multiplier = 11;
+  uint32 combo = 12;
 }
 
 message EntityState {
@@ -207,6 +266,9 @@ message EntityState {
   uint32 max_hp = 6;
   // EffectFlag bits.
   uint32 effects = 7;
+  ActionState action = 8;
+  // Server tick the action started (for syncing animations).
+  uint32 action_tick = 9;
 }
 
 message EntitySpawn {
@@ -232,6 +294,9 @@ message CombatEvent {
   uint32 skill_id = 4;
   uint32 amount = 5;
   bool critical = 6;
+  // A weapon attack (skill_id 0): plain, or the charged flourish.
+  bool weapon = 7;
+  bool flourish = 8;
 }
 
 // Sent every tick. Spawns and despawns are relative to what this client

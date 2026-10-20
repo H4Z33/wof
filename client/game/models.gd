@@ -3,7 +3,12 @@
 ## to each model's own Skeleton3D path once and cached.
 extends RefCounted
 
-const ANIMATION_SOURCE := "res://assets/characters/mannequin_m/UAL1_Standard.glb"
+# Animation libraries on the shared skeleton: UAL1 (locomotion, basic
+# combat) and UAL2 (sword combos, blocks, rolls and more), merged.
+const ANIMATION_SOURCES := [
+	"res://assets/characters/mannequin_m/UAL1_Standard.glb",
+	"res://assets/characters/mannequin_m/UAL2_Standard.glb",
+]
 
 const MODELS := {
 	"mannequin_m": {
@@ -184,11 +189,24 @@ static func _library_for(key: String, skeleton_path: String) -> AnimationLibrary
 static func _load_source() -> void:
 	if _source_lib != null:
 		return
-	var scene: Node = (load(ANIMATION_SOURCE) as PackedScene).instantiate()
-	var ap: AnimationPlayer = scene.find_children("*", "AnimationPlayer", true, false)[0]
-	var skeleton := _find_skeleton(scene)
-	# Track paths are relative to the player's root node.
-	var anim_root := ap.get_node(ap.root_node)
-	_source_skeleton_path = String(anim_root.get_path_to(skeleton))
-	_source_lib = ap.get_animation_library(ap.get_animation_library_list()[0])
-	scene.free()
+	_source_lib = AnimationLibrary.new()
+	for src in ANIMATION_SOURCES:
+		var scene: Node = (load(src) as PackedScene).instantiate()
+		var ap: AnimationPlayer = scene.find_children("*", "AnimationPlayer", true, false)[0]
+		var skeleton := _find_skeleton(scene)
+		# Track paths are relative to the player's root node.
+		var path := String(ap.get_node(ap.root_node).get_path_to(skeleton))
+		if _source_skeleton_path.is_empty():
+			_source_skeleton_path = path
+		var lib := ap.get_animation_library(ap.get_animation_library_list()[0])
+		for anim_name in lib.get_animation_list():
+			if _source_lib.has_animation(anim_name):
+				continue  # first source wins (both have A_TPose)
+			var anim: Animation = lib.get_animation(anim_name).duplicate(true)
+			if path != _source_skeleton_path:
+				for i in anim.get_track_count():
+					var tp := String(anim.track_get_path(i))
+					if tp.begins_with(path + ":"):
+						anim.track_set_path(i, NodePath(_source_skeleton_path + tp.substr(path.length())))
+			_source_lib.add_animation(anim_name, anim)
+		scene.free()

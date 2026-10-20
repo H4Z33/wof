@@ -41,6 +41,11 @@ static func skill(id: int) -> Dictionary:
 	return _skills.get(id, {})
 
 
+## A class's weapon ({} for NPCs and unknown classes).
+static func weapon_for(class_key: String) -> Dictionary:
+	return class_by_key(class_key).get("weapon", {})
+
+
 static func class_label(key: String) -> String:
 	var c := class_by_key(key)
 	return "%s (%s)" % [c["name"], c["world_name"]] if not c.is_empty() else key

@@ -110,12 +110,14 @@ func send(msg: PB.ClientMessage) -> void:
 		_ws.send(msg.to_bytes(), WebSocketPeer.WRITE_MODE_BINARY)
 
 
-func send_move(seq: int, dir_x: float, dir_z: float, yaw: float) -> void:
+func send_move(seq: int, dir_x: float, dir_z: float, yaw: float, buttons := 0, lock_target := 0) -> void:
 	var m := PB.MoveInput.new()
 	m.seq = seq
 	m.dir_x = dir_x
 	m.dir_z = dir_z
 	m.yaw = yaw
+	m.buttons = buttons
+	m.lock_target = lock_target
 	var msg := PB.ClientMessage.new()
 	msg.move = m
 	send(msg)

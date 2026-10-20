@@ -13,3 +13,20 @@ resource:
   decay_per_s: 8
   color: "#e0a23c"
 skills: [piston_shot, overcharge_shot, arc_grenade, stasis_coil]
+# Left click fires along your aim (or at the locked target); a charged shot
+# hits harder and further. Shots build Aether Charge.
+weapon:
+  name: Piston Carbine
+  kind: ranged
+  discipline: skill
+  damage: [7, 10]
+  range: 22
+  arc_deg: 0
+  swing_ms: 600
+  hit_ms: 100
+  flourish_mult: 2.5
+  flourish_range: 28
+  gain: 10
+  anim: Pistol_Shoot
+  flourish_anim: Pistol_Shoot
+  vfx: bullet

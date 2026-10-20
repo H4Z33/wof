@@ -12,3 +12,18 @@ resource:
   regen_per_s: 5
   color: "#b39dff"
 skills: [spirit_lance, divine_rebuke, blessing_of_dawn, mark_of_judgment]
+# Left click casts a spirit bolt; the charged version bursts on impact.
+weapon:
+  name: Spirit Staff
+  kind: ranged
+  discipline: will
+  damage: [6, 9]
+  range: 16
+  arc_deg: 0
+  swing_ms: 650
+  hit_ms: 250
+  flourish_mult: 2.2
+  flourish_radius: 3
+  anim: Spell_Simple_Shoot
+  flourish_anim: Spell_Simple_Shoot
+  vfx: lance

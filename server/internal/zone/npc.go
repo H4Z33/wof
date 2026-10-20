@@ -161,12 +161,15 @@ func (n *npc) Attack(id uint32) bool {
 	if !ok || t.player == nil || !t.alive() || !n.e.alive() || tick < n.nextAttack || n.e.stunned(tick) {
 		return false
 	}
-	if hdist(n.e.pos, t.pos) > n.def.Stats["attack_range"]+0.5 {
+	if n.strike != nil || hdist(n.e.pos, t.pos) > n.def.Stats["attack_range"]+0.5 {
 		return false
 	}
-	n.nextAttack = tick + z.ticks(n.def.Attack.CooldownMS)
 	n.e.yaw = yawToward(n.e.pos, t.pos)
-	z.damage(n.e, t, 0, float64(roll(n.def.Attack.Damage)), false)
+	windup := n.def.Attack.WindupMS
+	if windup <= 0 {
+		windup = npcWindupMS
+	}
+	z.startStrike(n, &npcStrike{target: id}, windup, pb.ActionState_ACTION_STATE_WINDUP)
 	return true
 }
 
@@ -202,22 +205,17 @@ func (n *npc) EffectOn(id uint32, name string, durationS, value float64) bool {
 func (n *npc) AttackArea(radius float64) bool {
 	z := n.z
 	tick := z.tick.Load()
-	if !n.e.alive() || tick < n.nextAttack || n.e.stunned(tick) {
+	if !n.e.alive() || tick < n.nextAttack || n.e.stunned(tick) || n.strike != nil {
 		return false
 	}
-	var hit []*entity
+	near := false
 	z.grid.around(n.e.pos, func(o *entity) {
-		if o.player != nil && o.alive() && hdist(o.pos, n.e.pos) <= radius {
-			hit = append(hit, o)
-		}
+		near = near || (o.player != nil && o.alive() && hdist(o.pos, n.e.pos) <= radius)
 	})
-	if len(hit) == 0 {
+	if !near {
 		return false
 	}
-	n.nextAttack = tick + z.ticks(n.def.Attack.CooldownMS)
-	for _, t := range hit {
-		z.damage(n.e, t, 0, float64(roll(n.def.Attack.Damage)), false)
-	}
+	z.startStrike(n, &npcStrike{area: radius}, npcSlamWindup, pb.ActionState_ACTION_STATE_SLAM_WINDUP)
 	return true
 }
 

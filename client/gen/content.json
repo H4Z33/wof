@@ -67,7 +67,15 @@
           "anim": "Spell_Simple_Shoot",
           "projectile": false
         }
-      ]
+      ],
+      "weapon": {
+        "name": "Jade Sword",
+        "kind": "melee",
+        "range": 2.6,
+        "anim": "Sword_Attack",
+        "flourish_anim": "Sword_Heavy_Combo",
+        "vfx": "slash"
+      }
     },
     {
       "key": "rail_gunner",
@@ -136,7 +144,15 @@
           "anim": "Pistol_Shoot",
           "projectile": true
         }
-      ]
+      ],
+      "weapon": {
+        "name": "Piston Carbine",
+        "kind": "ranged",
+        "range": 22,
+        "anim": "Pistol_Shoot",
+        "flourish_anim": "Pistol_Shoot",
+        "vfx": "bullet"
+      }
     },
     {
       "key": "mystic",
@@ -204,7 +220,15 @@
           "anim": "Spell_Simple_Shoot",
           "projectile": false
         }
-      ]
+      ],
+      "weapon": {
+        "name": "Spirit Staff",
+        "kind": "ranged",
+        "range": 16,
+        "anim": "Spell_Simple_Shoot",
+        "flourish_anim": "Spell_Simple_Shoot",
+        "vfx": "lance"
+      }
     }
   ],
   "items": {

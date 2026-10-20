@@ -17,6 +17,7 @@ func (z *Zone) replicate(tick uint32) {
 		s := &pb.EntityState{
 			Id: e.id, Pos: vec(e.pos), Yaw: float32(e.yaw), Moving: e.moving,
 			Hp: uint32(e.hp), MaxHp: uint32(e.maxHP), Effects: e.effectFlags(tick),
+			Action: e.action, ActionTick: e.actionTick,
 		}
 		states[e.id] = s
 		return s
@@ -63,14 +64,16 @@ func (z *Zone) replicate(tick uint32) {
 
 func (z *Zone) status(p *player) *pb.PlayerStatus {
 	s := &pb.PlayerStatus{
-		Level:     uint32(p.e.level),
-		Exp:       uint64(p.exp),
-		ExpToNext: uint64(rules.ExpToNext(p.e.level)),
-		Hp:        uint32(p.e.hp),
-		MaxHp:     uint32(p.e.maxHP),
-		Luck:      uint32(p.luck),
-		Karma:     int32(p.karma),
-		Resource:  uint32(p.resource),
+		Level:      uint32(p.e.level),
+		Exp:        uint64(p.exp),
+		ExpToNext:  uint64(rules.ExpToNext(p.e.level)),
+		Hp:         uint32(p.e.hp),
+		MaxHp:      uint32(p.e.maxHP),
+		Luck:       uint32(p.luck),
+		Karma:      int32(p.karma),
+		Resource:   uint32(p.resource),
+		Multiplier: float32(p.multiplier()),
+		Combo:      uint32(p.combo),
 	}
 	if p.class != nil {
 		s.ResourceMax = uint32(p.class.Resource.Max)

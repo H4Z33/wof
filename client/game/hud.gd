@@ -27,6 +27,9 @@ var _fate_title: Label
 var _fate_text: Label
 var _fate_effect: Label
 var _fate_tween: Tween
+var _crosshair: Label
+var _charge: Label
+var _multiplier: Label
 var _inventory_panel: PanelContainer
 var _inventory_list: Label
 
@@ -133,6 +136,34 @@ func _ready() -> void:
 	_death.hide()
 	add_child(_death)
 
+	_crosshair = Label.new()
+	_crosshair.text = "+"
+	_crosshair.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_crosshair.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_crosshair.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_crosshair.add_theme_font_size_override("font_size", 22)
+	_crosshair.modulate = Color(1, 1, 1, 0.7)
+	_outline(_crosshair)
+	add_child(_crosshair)
+	_charge = Label.new()
+	_charge.text = "Flourish ready"
+	_charge.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_charge.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_charge.offset_top = 40
+	_charge.add_theme_font_size_override("font_size", 18)
+	_charge.modulate = Color(1.0, 0.85, 0.35)
+	_outline(_charge)
+	_charge.hide()
+	add_child(_charge)
+	_multiplier = Label.new()
+	_multiplier.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT)
+	_multiplier.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_multiplier.offset_right = -24
+	_multiplier.add_theme_font_size_override("font_size", 30)
+	_multiplier.modulate = Color(1.0, 0.85, 0.35)
+	_outline(_multiplier)
+	add_child(_multiplier)
+
 	# Fate banner, upper middle of the screen.
 	_fate_panel = PanelContainer.new()
 	_fate_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
@@ -215,6 +246,7 @@ func set_status(s: PB.PlayerStatus) -> void:
 	_exp_bar.value = s.exp
 	_level_label.text = "Level %d   ·   %d / %d exp" % [s.level, s.exp, s.exp_to_next]
 	_stats_label.text = "Luck %d   ·   Karma %+d" % [s.luck, s.karma]
+	_multiplier.text = "x%.1f\n%d hits" % [s.multiplier, s.combo] if s.combo > 0 else ""
 	_res_bar.max_value = maxi(s.resource_max, 1)
 	_res_bar.value = s.resource
 	_res_text.text = "%s %d / %d" % [_res_name, s.resource, s.resource_max]
@@ -280,6 +312,14 @@ func set_inventory(items: Array) -> void:
 
 func toggle_inventory() -> void:
 	_inventory_panel.visible = not _inventory_panel.visible
+
+
+func set_crosshair(on: bool) -> void:
+	_crosshair.visible = on
+
+
+func set_charging(ready: bool) -> void:
+	_charge.visible = ready
 
 
 func show_message(text: String, color := Color.WHITE) -> void:

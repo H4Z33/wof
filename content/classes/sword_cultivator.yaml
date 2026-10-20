@@ -12,3 +12,18 @@ resource:
   regen_per_s: 6
   color: "#6fd6a8"
 skills: [jade_slash, flowing_strikes, sword_qi_wave, iron_meditation]
+# Left click. Hold past the swing to charge a flourish.
+weapon:
+  name: Jade Sword
+  kind: melee
+  discipline: strength
+  damage: [8, 12]
+  range: 2.6
+  arc_deg: 110
+  swing_ms: 500
+  hit_ms: 200
+  flourish_mult: 2.5
+  flourish_arc_deg: 220
+  anim: Sword_Attack
+  flourish_anim: Sword_Heavy_Combo
+  vfx: slash

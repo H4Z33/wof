@@ -26,6 +26,13 @@ type entity struct {
 	lastDamagedTick uint32
 	effects         []effect
 
+	// What it is doing (for animation) and since which server tick.
+	action     pb.ActionState
+	actionTick uint32
+	// Recent positions, for lag-compensated hit checks (NPCs only).
+	hist     [historyLen][3]float64
+	histFull bool
+
 	player *player // set for players
 	npc    *npc    // set for NPCs
 	cache  *cache  // set for hidden caches
@@ -105,7 +112,18 @@ type player struct {
 	// Last tick this player dealt damage (Aether Charge drains outside combat).
 	combatTick uint32
 	cooldowns  map[uint32]uint32 // skill id -> first tick it can be used again
-	deadUntil  uint32            // respawn tick while dead, else 0
+
+	// Action state machine (see action.go); timers are input sequence numbers.
+	prevButtons  uint32
+	lockTarget   uint32
+	actEnd       uint32
+	chargeSeq    uint32
+	rollReady    uint32
+	rollDir      [2]float64
+	queuedAttack bool
+	iframeUntil  uint32 // server tick
+	combo        int    // hits in a row without taking damage
+	deadUntil    uint32 // respawn tick while dead, else 0
 
 	// Fate.
 	luck        int
@@ -159,6 +177,9 @@ type npc struct {
 	path     [][2]float64
 	pathGoal [2]float64
 	pathTick uint32
+
+	// The attack being wound up, if any.
+	strike *npcStrike
 
 	// Temporary NPCs (Fate ambushes) never respawn and vanish at expireAt.
 	temporary bool

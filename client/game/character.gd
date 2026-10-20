@@ -7,6 +7,7 @@ extends Node3D
 
 const PB := preload("res://gen/convergence/v1/world.pb.gd")
 const Models := preload("res://game/models.gd")
+const ContentDB := preload("res://game/content_db.gd")
 # Godot's glTF importer strips the "_Loop" suffix and marks those clips as looping.
 const ANIM_IDLE := "Idle"
 const ANIM_MOVE := "Jog_Fwd"
@@ -19,6 +20,10 @@ const PICK_LAYER := 2
 
 var entity_id := 0
 var is_local := false
+var class_key := ""
+# Current PB.ActionState (swing, block, roll, NPC wind-up...).
+var action := 0
+var _action_key := -1
 # NPC attack look, from EntitySpawn.
 var attack_anim := ""
 var attack_vfx := ""
@@ -42,6 +47,7 @@ func setup(spawn: PB.EntitySpawn, local: bool) -> void:
 	is_local = local
 	kind = spawn.kind
 	display_name = spawn.name
+	class_key = spawn.class_key
 	level = maxi(spawn.level, 1)
 	name = "Entity_%d" % entity_id
 	if kind == PB.EntityKind.ENTITY_KIND_OBJECT:
@@ -304,14 +310,55 @@ func _apply(pos: Vector3, yaw: float, moving: bool) -> void:
 	rotation.y = yaw
 	if moving != _moving:
 		_moving = moving
-		# Running cancels an attack/flinch so feet never slide.
-		if hp > 0 and (not _oneshot or moving):
+		# Running cancels a flinch so feet never slide; attacks, blocks and
+		# rolls keep their animation.
+		if hp > 0 and action == 0 and (not _oneshot or moving):
 			_oneshot = false
 			_play(ANIM_MOVE if moving else ANIM_IDLE)
 
 
+## Plays the animation for an action state. key changes for each new
+## instance of a repeated action (a chained swing), so it replays.
+func set_action(state: int, key: int) -> void:
+	if state == action and key == _action_key:
+		return
+	var prev := action
+	action = state
+	_action_key = key
+	if hp <= 0 or _player == null:
+		return
+	var w := ContentDB.weapon_for(class_key)
+	match state:
+		1:  # swing
+			play_action(w.get("anim", "Punch_Cross"))
+		2:  # flourish
+			play_action(w.get("flourish_anim", "Sword_Heavy_Combo"))
+		3:  # charging
+			_hold({"melee": "Sword_Idle", "ranged": "Pistol_Aim_Neutral"}.get(w.get("kind", "melee"), "Sword_Idle")
+					if class_key != "mystic" else "Spell_Simple_Idle")
+		4:  # block
+			_hold("Sword_Block")
+		5:  # roll
+			play_action("Roll")
+		6:  # NPC wind-up
+			play_action(attack_anim if not attack_anim.is_empty() else "Punch_Jab")
+		7:  # NPC slam wind-up
+			play_action("Sword_Heavy_Combo")
+		_:
+			if prev in [3, 4]:
+				_oneshot = false
+				_play(ANIM_MOVE if _moving else ANIM_IDLE)
+
+
+## Holds a pose (block, charge) until the action changes.
+func _hold(anim: String) -> void:
+	if _player.has_animation(anim):
+		_oneshot = true
+		_play(anim, 0.1)
+
+
 func _on_animation_finished(anim: StringName) -> void:
-	if anim == ANIM_DEATH or hp <= 0:
+	if anim == ANIM_DEATH or hp <= 0 or action in [3, 4]:
 		return
 	_oneshot = false
 	_play(ANIM_MOVE if _moving else ANIM_IDLE)

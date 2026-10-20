@@ -47,6 +47,14 @@ type classJSON struct {
 		Max   int    `json:"max"`
 	} `json:"resource"`
 	Skills []skillJSON `json:"skills"`
+	Weapon struct {
+		Name         string  `json:"name"`
+		Kind         string  `json:"kind"`
+		Range        float64 `json:"range"`
+		Anim         string  `json:"anim"`
+		FlourishAnim string  `json:"flourish_anim"`
+		VFX          string  `json:"vfx"`
+	} `json:"weapon"`
 }
 
 type bundle struct {
@@ -106,6 +114,9 @@ func build(c *content.Content) bundle {
 		cj := classJSON{Key: cl.Key, Name: cl.Name, World: cl.World, WorldName: content.Worlds[cl.World],
 			Archetype: cl.Archetype, Description: cl.Description, HP: cl.MaxHP(1)}
 		cj.Resource.Name, cj.Resource.Color, cj.Resource.Max = cl.Resource.Name, cl.Resource.Color, cl.Resource.Max
+		w := cl.Weapon
+		cj.Weapon.Name, cj.Weapon.Kind, cj.Weapon.Range = w.Name, w.Kind, w.Range
+		cj.Weapon.Anim, cj.Weapon.FlourishAnim, cj.Weapon.VFX = w.Anim, w.FlourishAnim, w.VFX
 		for _, id := range cl.SkillIDs {
 			s := c.Skills[id]
 			cj.Skills = append(cj.Skills, skillJSON{ID: s.ID, Key: s.Key, Name: s.Name, Description: s.Description,

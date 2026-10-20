@@ -170,7 +170,11 @@ type Zone struct {
 	places   []place
 	aiLoaded map[string]bool
 	caches   []*entity
-	nav      *nav.Grid // nil on flat zones
+	// Weapon attacks waiting for their active moment.
+	pendingHits []pendingHit
+	// Flags for the damage event being produced right now.
+	weaponHit, flourishHit, blockedHit bool
+	nav                                *nav.Grid // nil on flat zones
 	// Mixed into every player's fate entropy so rolls cannot be predicted
 	// from inputs alone.
 	fateSecret uint64
@@ -414,6 +418,8 @@ func (z *Zone) join(c model.Character, conn Conn) (*Handle, error) {
 		Terrain:       z.terrainInfo(),
 		Skills:        z.skillInfos(p),
 		ClassInfo:     classInfo(class),
+		Weapon:        weaponInfo(p.weapon()),
+		ActionRules:   z.actionRules(p),
 		Status:        z.status(p),
 		CharacterName: c.Name,
 		Inventory:     z.inventoryList(p),
@@ -482,10 +488,13 @@ func (z *Zone) step() {
 	for _, p := range z.players {
 		z.applyInputs(p, dt)
 	}
+	z.resolveHits(tick)
 	z.thinkNPCs(tick)
 	for _, n := range z.npcs {
 		z.moveNPC(n, dt)
 	}
+	z.resolveStrikes(tick)
+	z.recordHistory(tick)
 	z.updateResources(tick)
 	z.tickEffects(tick)
 	z.updateLife(tick)

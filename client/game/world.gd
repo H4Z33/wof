@@ -1,14 +1,16 @@
 ## The in-zone scene: environment, camera, local prediction, replicated
-## entities and tab-target combat.
+## entities and action combat.
 ##
 ## Local player: every server tick (50 ms) the current input is sent as a
 ## MoveInput and applied locally right away (prediction). Each Snapshot carries
 ## the server position and the last input it applied; we reset to that
 ## position and replay the inputs it has not applied yet (reconciliation).
 ##
-## Combat: the player selects a target (click or Tab) and uses skills (1, 2).
-## Cooldowns and range are checked locally for responsiveness, but the server
-## decides; rejections come back through Net.skill_rejected.
+## Combat (Fable-style): left click attacks (hold to charge a flourish), right
+## click blocks, Space rolls, F locks on. The action state machine runs here
+## and on the server from the same inputs. Skills (1-4) go at the locked
+## target or the nearest enemy in front; the server decides, and rejections
+## come back through Net.skill_rejected.
 extends Node3D
 
 const PB := preload("res://gen/convergence/v1/world.pb.gd")
@@ -50,7 +52,6 @@ var _clock_synced := false
 var _pending: Array[Dictionary] = []  # unacknowledged inputs: {seq, dir: Vector2}
 var _seq := 0
 var _acc := 0.0
-var _was_moving := false
 var _pred_pos := Vector3.ZERO
 var _prev_pred_pos := Vector3.ZERO
 var _pred_yaw := 0.0
@@ -67,7 +68,7 @@ var _camera: Camera3D
 var _cam_yaw := 0.0
 var _cam_pitch := 0.45
 var _cam_distance := 7.0
-var _click_start := Vector2.ZERO
+var _weapon: PB.WeaponInfo
 var _hud: Hud
 
 
@@ -83,6 +84,8 @@ func start(welcome: PB.Welcome) -> void:
 	for s in welcome.skills:
 		_skills[s.id] = s
 		_skill_order.append(s.id)
+	_rules = welcome.action_rules
+	_weapon = welcome.weapon
 	_load_terrain(welcome.terrain)
 	_build_environment()
 	_build_camera()
@@ -100,6 +103,8 @@ func start(welcome: PB.Welcome) -> void:
 	Net.snapshot_received.connect(_on_snapshot)
 	Net.skill_rejected.connect(_on_skill_rejected)
 	Net.fate_received.connect(_on_fate)
+	if not autofight and not autowalk:
+		_capture_mouse(true)
 
 
 func _process(delta: float) -> void:
@@ -119,6 +124,7 @@ func _process(delta: float) -> void:
 	if local != null:
 		var t := clampf(_acc / tick_dt, 0.0, 1.0)
 		local.set_predicted(_prev_pred_pos.lerp(_pred_pos, t), _pred_yaw, _pred_moving)
+		local.set_action(_act, _act_end if _act in [A_SWING, A_FLOURISH, A_ROLL] else 0)
 
 	var render_tick := _client_tick - INTERP_TICKS
 	for id in _entities:
@@ -137,6 +143,30 @@ func _is_dead() -> bool:
 
 
 # --- Input and prediction ----------------------------------------------------
+
+const BTN_ATTACK := 1
+const BTN_BLOCK := 2
+const BTN_ROLL := 4
+const A_IDLE := 0
+const A_SWING := 1
+const A_FLOURISH := 2
+const A_CHARGING := 3
+const A_BLOCK := 4
+const A_ROLL := 5
+
+# Action state machine, mirroring zone/action.go stepAction with the timings
+# from Welcome.action_rules. Timers count input sequence numbers.
+var _rules: PB.ActionRules
+var _act := A_IDLE
+var _act_end := 0
+var _charge_seq := 0
+var _roll_ready := 0
+var _roll_dir := Vector2.ZERO
+var _queued_attack := false
+var _prev_buttons := 0
+var _roll_pressed := false  # latched until the next input goes out
+var _auto_click := false
+
 
 func _read_input() -> Vector2:
 	if _is_dead():
@@ -168,27 +198,123 @@ func _read_input() -> Vector2:
 	return dir.normalized() if dir.length() > 1.0 else dir
 
 
+func _buttons() -> int:
+	var b := 0
+	if _roll_pressed:
+		b |= BTN_ROLL
+	_roll_pressed = false
+	if _is_dead():
+		return 0
+	if autofight:
+		if _autofight_wants_attack():
+			# Click: hold for one input, release for the next.
+			_auto_click = not _auto_click
+			if _auto_click:
+				b |= BTN_ATTACK
+		return b
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and get_window().has_focus():
+		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+			b |= BTN_ATTACK
+		if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+			b |= BTN_BLOCK
+	return b
+
+
+## Where the character faces: the locked target, else the direction of the
+## camera while fighting, else where it walks.
+func _facing(dir: Vector2, buttons: int) -> float:
+	var target: Character = _entities.get(_target_id)
+	if target != null and target.is_alive():
+		return atan2(target.global_position.x - _pred_pos.x, target.global_position.z - _pred_pos.z)
+	if buttons & (BTN_ATTACK | BTN_BLOCK) or _act in [A_SWING, A_FLOURISH, A_CHARGING, A_BLOCK]:
+		return _cam_yaw + PI
+	if dir.length_squared() > 0.0001:
+		return atan2(dir.x, dir.y)
+	return _pred_yaw
+
+
+## Mirrors zone/action.go stepAction. Returns [speed factor, movement dir].
+func _step_action(seq: int, buttons: int, dir: Vector2) -> Array:
+	var prev := _prev_buttons
+	_prev_buttons = buttons
+	var held := buttons & BTN_ATTACK != 0
+	var pressed := held and prev & BTN_ATTACK == 0
+	var released := not held and prev & BTN_ATTACK != 0
+	var busy := _act == A_SWING or _act == A_FLOURISH
+	if busy and pressed:
+		_queued_attack = true
+	if (busy or _act == A_ROLL) and seq >= _act_end:
+		if _act != A_ROLL and _queued_attack:
+			_queued_attack = false
+			_start_swing(seq, false)
+		elif _act != A_ROLL and held:
+			_act = A_CHARGING
+			_charge_seq = seq
+		else:
+			_act = A_IDLE
+		busy = _act == A_SWING or _act == A_FLOURISH
+	if buttons & BTN_ROLL and not busy and _act != A_ROLL and seq >= _roll_ready:
+		if dir.length() > 0.01:
+			_roll_dir = dir.normalized()
+		else:
+			_roll_dir = Vector2(-sin(_pred_yaw), -cos(_pred_yaw))
+		_act_end = seq + _rules.roll_ticks
+		_roll_ready = seq + _rules.roll_cooldown_ticks
+		_queued_attack = false
+		_act = A_ROLL
+	match _act:
+		A_IDLE, A_BLOCK:
+			if pressed:
+				_start_swing(seq, false)
+			elif buttons & BTN_BLOCK:
+				_act = A_BLOCK
+			else:
+				_act = A_IDLE
+		A_CHARGING:
+			if released:
+				if seq - _charge_seq >= _rules.charge_ticks:
+					_start_swing(seq, true)
+				else:
+					_act = A_IDLE
+	match _act:
+		A_ROLL:
+			return [_rules.roll_speed, _roll_dir]
+		A_BLOCK:
+			return [_rules.block_speed, dir]
+		A_SWING, A_FLOURISH:
+			return [_rules.swing_speed, dir]
+		A_CHARGING:
+			return [_rules.charge_speed, dir]
+	return [1.0, dir]
+
+
+func _start_swing(seq: int, flourish: bool) -> void:
+	_act = A_FLOURISH if flourish else A_SWING
+	_act_end = seq + (_rules.flourish_ticks if flourish else _rules.swing_ticks)
+
+
 func _step_input() -> void:
 	var dir := _read_input()
-	var moving := dir.length_squared() > 0.0001
-	if moving:
-		_pred_yaw = atan2(dir.x, dir.y)
+	var buttons := _buttons()
+	_seq += 1
+	var yaw := _facing(dir, buttons)
+	var res := _step_action(_seq, buttons, dir) if _rules != null else [1.0, dir]
+	var speed: float = res[0]
+	var mdir: Vector2 = res[1]
+	_pred_yaw = yaw
 	_prev_pred_pos = _pred_pos
-	# Send while moving, plus one final stop so the server sees it at once.
-	if moving or _was_moving:
-		_seq += 1
-		Net.send_move(_seq, dir.x, dir.y, _pred_yaw)
-		_pending.append({"seq": _seq, "dir": dir})
-		_pred_pos = _simulate(_pred_pos, dir)
-	_was_moving = moving
-	_pred_moving = moving
+	# Every tick: the server runs the same state machine on these inputs.
+	Net.send_move(_seq, dir.x, dir.y, yaw, buttons, _target_id)
+	_pending.append({"seq": _seq, "dir": mdir, "speed": speed})
+	_pred_pos = _simulate(_pred_pos, mdir, speed)
+	_pred_moving = mdir.length_squared() > 0.0001
 
 
 ## Must match zone.applyInputs on the server.
-func _simulate(pos: Vector3, dir: Vector2) -> Vector3:
+func _simulate(pos: Vector3, dir: Vector2, speed := 1.0) -> Vector3:
 	if dir.length() > 1.0:
 		dir = dir.normalized()
-	var step := move_speed / tick_rate
+	var step := move_speed * speed / tick_rate
 	# Same order as the server (zone.walk): clamp to bounds, then terrain rules.
 	var tx := clampf(pos.x + dir.x * step, -half_extent, half_extent)
 	var tz := clampf(pos.z + dir.y * step, -half_extent, half_extent)
@@ -203,7 +329,7 @@ func _reconcile(server_pos: Vector3, ack: int) -> void:
 		_pending.pop_front()
 	var corrected := server_pos
 	for input in _pending:
-		corrected = _simulate(corrected, input["dir"])
+		corrected = _simulate(corrected, input["dir"], input["speed"])
 	var error := corrected - _pred_pos
 	if error.length() > SNAP_DISTANCE:
 		_prev_pred_pos = corrected
@@ -214,22 +340,37 @@ func _reconcile(server_pos: Vector3, ack: int) -> void:
 
 # --- Targeting and skills ----------------------------------------------------
 
+func _capture_mouse(on: bool) -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if on else Input.MOUSE_MODE_VISIBLE
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_RIGHT):
-		_cam_yaw -= event.relative.x * 0.006
-		_cam_pitch = clampf(_cam_pitch + event.relative.y * 0.004, 0.05, 1.3)
-	elif event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			_cam_distance = maxf(_cam_distance - 0.6, 2.5)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			_cam_distance = minf(_cam_distance + 0.6, 25.0)
-		elif event.button_index == MOUSE_BUTTON_LEFT:
-			if event.pressed:
-				_click_start = event.position
-			elif event.position.distance_to(_click_start) < 6.0:
-				_pick_at(event.position)
+	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	if event is InputEventMouseMotion and captured:
+		_cam_yaw -= event.relative.x * 0.004
+		_cam_pitch = clampf(_cam_pitch + event.relative.y * 0.003, 0.05, 1.3)
+	elif event is InputEventMouseButton and event.pressed:
+		match event.button_index:
+			MOUSE_BUTTON_WHEEL_UP:
+				_cam_distance = maxf(_cam_distance - 0.6, 2.5)
+			MOUSE_BUTTON_WHEEL_DOWN:
+				_cam_distance = minf(_cam_distance + 0.6, 25.0)
+			MOUSE_BUTTON_MIDDLE:
+				_toggle_lock()
+			MOUSE_BUTTON_LEFT:
+				if not captured:
+					_capture_mouse(true)  # click back into the game (no attack)
+					get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
+			KEY_ESCAPE:
+				if captured:
+					_capture_mouse(false)  # free the cursor; Esc again logs out
+					get_viewport().set_input_as_handled()
+			KEY_SPACE:
+				_roll_pressed = true
+			KEY_F:
+				_toggle_lock()
 			KEY_TAB:
 				_cycle_target()
 				get_viewport().set_input_as_handled()
@@ -241,16 +382,32 @@ func _unhandled_input(event: InputEvent) -> void:
 					use_skill(_skill_order[i])
 
 
-func _pick_at(screen_pos: Vector2) -> void:
-	var from := _camera.project_ray_origin(screen_pos)
-	var query := PhysicsRayQueryParameters3D.create(from, from + _camera.project_ray_normal(screen_pos) * 200.0)
-	query.collision_mask = Character.PICK_LAYER
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if hit.is_empty():
+## F or middle mouse: lock onto the enemy nearest the center of view, or unlock.
+func _toggle_lock() -> void:
+	if _target_id != 0:
 		_set_target(0)
-	elif hit["collider"].has_meta("entity_id"):
-		var id: int = hit["collider"].get_meta("entity_id")
-		_set_target(0 if id == my_id else id)
+		return
+	var best := 0
+	var best_score := INF
+	var forward := Vector2(-sin(_cam_yaw), -cos(_cam_yaw))
+	for id in _entities:
+		var c: Character = _entities[id]
+		if not c.is_npc() or not c.is_alive():
+			continue
+		var to := Vector2(c.global_position.x - _pred_pos.x, c.global_position.z - _pred_pos.z)
+		var d := to.length()
+		if d > 25.0 or d < 0.01:
+			continue
+		var angle := absf(forward.angle_to(to / d))
+		if angle > 1.2:
+			continue
+		var score := d * (1.0 + angle * 2.0)
+		if score < best_score:
+			best = id
+			best_score = score
+	if best == 0:
+		_hud.show_message("No enemy in view", Color(0.8, 0.8, 0.8))
+	_set_target(best)
 
 
 ## Tab: the nearest living NPC, or the next one by distance if already targeting.
@@ -294,8 +451,10 @@ func use_skill(skill_id: int) -> void:
 		Net.send_skill(skill_id, 0)
 		return
 	var target: Character = _entities.get(_target_id)
-	if target == null or not target.is_npc():
-		_hud.show_message("Select an enemy first (click or Tab)", Color(1, 0.85, 0.5))
+	if target == null or not target.is_npc() or not target.is_alive():
+		target = _enemy_in_front(s.range + 0.5)
+	if target == null:
+		_hud.show_message("No enemy in front (F to lock on)", Color(1, 0.85, 0.5))
 		return
 	if not target.is_alive():
 		_hud.show_message("Target is dead", Color(0.8, 0.8, 0.8))
@@ -307,7 +466,7 @@ func use_skill(skill_id: int) -> void:
 		_hud.show_message("Out of range", Color(1, 0.85, 0.5))
 		return
 	_ready_at[skill_id] = Time.get_ticks_msec() + s.cooldown_ms
-	Net.send_skill(skill_id, _target_id)
+	Net.send_skill(skill_id, target.entity_id)
 
 
 func _on_skill_rejected(skill_id: int, reason: String) -> void:
@@ -315,14 +474,42 @@ func _on_skill_rejected(skill_id: int, reason: String) -> void:
 	_hud.show_message(REJECT_TEXT.get(reason, reason), Color(1, 0.6, 0.5))
 
 
-## How close autofight walks: within the shortest enemy skill's range.
+## The living enemy closest to where the character faces, within range.
+func _enemy_in_front(max_range: float) -> Character:
+	var best: Character = null
+	var best_score := INF
+	var forward := Vector2(sin(_pred_yaw), cos(_pred_yaw))
+	for id in _entities:
+		var c: Character = _entities[id]
+		if not c.is_npc() or not c.is_alive():
+			continue
+		var to := Vector2(c.global_position.x - _pred_pos.x, c.global_position.z - _pred_pos.z)
+		var d := to.length()
+		if d > max_range or d < 0.01:
+			continue
+		var angle := absf(forward.angle_to(to / d))
+		if angle > 1.0:
+			continue
+		var score := d * (1.0 + angle)
+		if score < best_score:
+			best = c
+			best_score = score
+	return best
+
+
+## How close autofight walks: well within the weapon's reach.
 func _autofight_range() -> float:
-	var r := 1000.0
-	for id in _skill_order:
-		var s: PB.SkillInfo = _skills[id]
-		if not s.target_self:
-			r = minf(r, s.range)
-	return maxf(1.5, r * 0.75) if r < 1000.0 else 1.8
+	if _weapon == null:
+		return 1.8
+	return maxf(1.5, _weapon.range * (0.7 if _weapon.kind == "melee" else 0.6))
+
+
+## Autofight attacks while the locked target is within weapon reach.
+func _autofight_wants_attack() -> bool:
+	var target: Character = _entities.get(_target_id)
+	if target == null or not target.is_alive() or _weapon == null:
+		return false
+	return target.global_position.distance_to(_pred_pos) <= _weapon.range + 0.3
 
 
 ## Test option: target the nearest enemy, walk to it and use skills.
@@ -331,6 +518,9 @@ func _autofight() -> void:
 	if target == null or not target.is_alive():
 		_cycle_target()
 		return
+	# Roll away from telegraphed attacks, like a player would.
+	if target.action in [6, 7] and target.global_position.distance_to(_pred_pos) < 4.0 and randf() < 0.5:
+		_roll_pressed = true
 	var now := Time.get_ticks_msec()
 	for id in _skill_order:
 		var s: PB.SkillInfo = _skills[id]
@@ -385,6 +575,8 @@ func _apply_state(snap: PB.Snapshot, state: PB.EntityState) -> void:
 	var c: Character = _entities[state.id]
 	c.set_health(state.hp, state.max_hp)
 	c.set_effects(state.effects)
+	if state.id != my_id:
+		c.set_action(state.action, state.action_tick)
 	if state.id == my_id:
 		_reconcile(_vec(state.pos), snap.ack_input_seq)
 	else:
@@ -396,8 +588,8 @@ func _on_combat_event(ev: PB.CombatEvent) -> void:
 	var dst: Character = _entities.get(ev.target_id)
 	match ev.kind:
 		PB.CombatEventKind.COMBAT_EVENT_KIND_DAMAGE:
-			var look := _attack_look(src, ev.skill_id)
-			if src != null and src != dst:
+			var look := _attack_look(src, ev)
+			if src != null and src != dst and not ev.weapon and not src.is_npc():
 				src.play_action(look["anim"])
 			if dst == null:
 				return
@@ -429,6 +621,13 @@ func _on_combat_event(ev: PB.CombatEvent) -> void:
 			if dst != null:
 				dst.show_number("+%d" % ev.amount, Color(0.45, 1.0, 0.5))
 				VFX.heal(self, dst.global_position)
+		PB.CombatEventKind.COMBAT_EVENT_KIND_BLOCKED:
+			if dst != null:
+				dst.show_number("Block %d" % ev.amount, Color(0.6, 0.8, 1.0))
+				VFX.impact(self, dst.global_position + Vector3(0, 1.2, 0), "ward")
+		PB.CombatEventKind.COMBAT_EVENT_KIND_DODGED:
+			if dst != null:
+				dst.show_number("Dodge", Color(0.85, 0.95, 1.0))
 		PB.CombatEventKind.COMBAT_EVENT_KIND_MISS:
 			if src != null:
 				var miss_skill: PB.SkillInfo = _skills.get(ev.skill_id)
@@ -448,8 +647,17 @@ func _land_hit(dst: Character, amount: String, color: Color) -> void:
 		dst.play_hit()
 
 
-func _attack_look(src: Character, skill_id: int) -> Dictionary:
+## How an attack looks: the attacker's weapon, a skill, or the NPC's attack.
+func _attack_look(src: Character, ev: PB.CombatEvent) -> Dictionary:
+	var skill_id := ev.skill_id
 	var look := {"anim": NPC_ATTACK_ANIM, "vfx": "hit", "projectile": false, "radius": 0.0}
+	if ev.weapon and src != null:
+		var w := ContentDB.weapon_for(src.class_key)
+		look["vfx"] = w.get("vfx", "hit")
+		look["projectile"] = w.get("kind", "melee") == "ranged"
+		if ev.flourish:
+			look["radius"] = 2.5
+		return look
 	if src != null and src.is_npc():
 		if not src.attack_anim.is_empty():
 			look["anim"] = src.attack_anim
@@ -554,8 +762,10 @@ func _update_target_visuals() -> void:
 
 
 func _update_hud() -> void:
-	_hud.debug_label.text = "%s  ·  entity %d  ·  visible %d  ·  rtt %d ms\nWASD move · click/Tab target · 1-2 skills · I inventory · right-drag camera · Esc logout" % [
+	_hud.debug_label.text = "%s  ·  entity %d  ·  visible %d  ·  rtt %d ms\nWASD move · LMB attack (hold: flourish) · RMB block · Space roll · F lock · 1-4 skills · I inventory · Esc cursor" % [
 		zone_id, my_id, _entities.size(), Net.rtt_ms]
+	_hud.set_crosshair(_target_id == 0 and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED)
+	_hud.set_charging(_act == A_CHARGING and _seq - _charge_seq >= (_rules.charge_ticks if _rules else 8))
 
 
 func _build_ring() -> void:

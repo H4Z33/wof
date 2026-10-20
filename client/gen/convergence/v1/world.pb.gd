@@ -191,7 +191,7 @@ class _Reader:
 
 enum ProtocolVersion {
 	PROTOCOL_VERSION_UNSPECIFIED = 0,
-	PROTOCOL_VERSION_CURRENT = 7,
+	PROTOCOL_VERSION_CURRENT = 8,
 }
 
 enum FateOmen {
@@ -220,12 +220,32 @@ enum EffectFlag {
 	EFFECT_FLAG_REGEN = 256,
 }
 
+enum InputButton {
+	INPUT_BUTTON_UNSPECIFIED = 0,
+	INPUT_BUTTON_ATTACK = 1,
+	INPUT_BUTTON_BLOCK = 2,
+	INPUT_BUTTON_ROLL = 4,
+}
+
+enum ActionState {
+	ACTION_STATE_UNSPECIFIED = 0,
+	ACTION_STATE_SWING = 1,
+	ACTION_STATE_FLOURISH = 2,
+	ACTION_STATE_CHARGING = 3,
+	ACTION_STATE_BLOCK = 4,
+	ACTION_STATE_ROLL = 5,
+	ACTION_STATE_WINDUP = 6,
+	ACTION_STATE_SLAM_WINDUP = 7,
+}
+
 enum CombatEventKind {
 	COMBAT_EVENT_KIND_UNSPECIFIED = 0,
 	COMBAT_EVENT_KIND_DAMAGE = 1,
 	COMBAT_EVENT_KIND_DEATH = 2,
 	COMBAT_EVENT_KIND_MISS = 3,
 	COMBAT_EVENT_KIND_HEAL = 4,
+	COMBAT_EVENT_KIND_BLOCKED = 5,
+	COMBAT_EVENT_KIND_DODGED = 6,
 }
 
 class Vec3:
@@ -411,6 +431,8 @@ class MoveInput:
 	var dir_x: float = 0.0
 	var dir_z: float = 0.0
 	var yaw: float = 0.0
+	var buttons: int = 0
+	var lock_target: int = 0
 
 	func _write(w: _Writer) -> void:
 		if seq != 0:
@@ -425,6 +447,12 @@ class MoveInput:
 		if yaw != 0.0:
 			w.tag(4, 5)
 			w.f32(yaw)
+		if buttons != 0:
+			w.tag(5, 0)
+			w.varint(buttons)
+		if lock_target != 0:
+			w.tag(6, 0)
+			w.varint(lock_target)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -442,6 +470,12 @@ class MoveInput:
 					else: r.skip(wt)
 				4:
 					if wt == 5: yaw = r.f32()
+					else: r.skip(wt)
+				5:
+					if wt == 0: buttons = r.uint32()
+					else: r.skip(wt)
+				6:
+					if wt == 0: lock_target = r.uint32()
 					else: r.skip(wt)
 				_:
 					r.skip(wt)
@@ -680,6 +714,8 @@ class Welcome:
 	var inventory: Array[InventoryItem] = []
 	var terrain: TerrainInfo = null
 	var class_info: ClassInfo = null
+	var weapon: WeaponInfo = null
+	var action_rules: ActionRules = null
 
 	func _write(w: _Writer) -> void:
 		if entity_id != 0:
@@ -715,6 +751,10 @@ class Welcome:
 			w.message(12, terrain)
 		if class_info != null:
 			w.message(13, class_info)
+		if weapon != null:
+			w.message(14, weapon)
+		if action_rules != null:
+			w.message(15, action_rules)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -796,6 +836,24 @@ class Welcome:
 						v._read(sub)
 						if sub.failed: r.failed = true
 						class_info = v
+				14:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := WeaponInfo.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						weapon = v
+				15:
+					if wt != 2:
+						r.skip(wt)
+					else:
+						var sub := r.sub()
+						var v := ActionRules.new()
+						v._read(sub)
+						if sub.failed: r.failed = true
+						action_rules = v
 				_:
 					r.skip(wt)
 
@@ -807,6 +865,168 @@ class Welcome:
 	# Returns null if the bytes are malformed.
 	static func from_bytes(b: PackedByteArray) -> Welcome:
 		var m := Welcome.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class WeaponInfo:
+	extends RefCounted
+	var name: String = ""
+	var kind: String = ""
+	var range: float = 0.0
+	var arc_deg: float = 0.0
+	var anim: String = ""
+	var flourish_anim: String = ""
+	var vfx: String = ""
+
+	func _write(w: _Writer) -> void:
+		if not name.is_empty():
+			w.tag(1, 2)
+			w.string(name)
+		if not kind.is_empty():
+			w.tag(2, 2)
+			w.string(kind)
+		if range != 0.0:
+			w.tag(3, 5)
+			w.f32(range)
+		if arc_deg != 0.0:
+			w.tag(4, 5)
+			w.f32(arc_deg)
+		if not anim.is_empty():
+			w.tag(5, 2)
+			w.string(anim)
+		if not flourish_anim.is_empty():
+			w.tag(6, 2)
+			w.string(flourish_anim)
+		if not vfx.is_empty():
+			w.tag(7, 2)
+			w.string(vfx)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 2: name = r.string()
+					else: r.skip(wt)
+				2:
+					if wt == 2: kind = r.string()
+					else: r.skip(wt)
+				3:
+					if wt == 5: range = r.f32()
+					else: r.skip(wt)
+				4:
+					if wt == 5: arc_deg = r.f32()
+					else: r.skip(wt)
+				5:
+					if wt == 2: anim = r.string()
+					else: r.skip(wt)
+				6:
+					if wt == 2: flourish_anim = r.string()
+					else: r.skip(wt)
+				7:
+					if wt == 2: vfx = r.string()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> WeaponInfo:
+		var m := WeaponInfo.new()
+		var r := _Reader.new(b, 0, b.size())
+		m._read(r)
+		return null if r.failed else m
+
+class ActionRules:
+	extends RefCounted
+	var swing_ticks: int = 0
+	var flourish_ticks: int = 0
+	var charge_ticks: int = 0
+	var roll_ticks: int = 0
+	var roll_cooldown_ticks: int = 0
+	var roll_speed: float = 0.0
+	var block_speed: float = 0.0
+	var swing_speed: float = 0.0
+	var charge_speed: float = 0.0
+
+	func _write(w: _Writer) -> void:
+		if swing_ticks != 0:
+			w.tag(1, 0)
+			w.varint(swing_ticks)
+		if flourish_ticks != 0:
+			w.tag(2, 0)
+			w.varint(flourish_ticks)
+		if charge_ticks != 0:
+			w.tag(3, 0)
+			w.varint(charge_ticks)
+		if roll_ticks != 0:
+			w.tag(4, 0)
+			w.varint(roll_ticks)
+		if roll_cooldown_ticks != 0:
+			w.tag(5, 0)
+			w.varint(roll_cooldown_ticks)
+		if roll_speed != 0.0:
+			w.tag(6, 5)
+			w.f32(roll_speed)
+		if block_speed != 0.0:
+			w.tag(7, 5)
+			w.f32(block_speed)
+		if swing_speed != 0.0:
+			w.tag(8, 5)
+			w.f32(swing_speed)
+		if charge_speed != 0.0:
+			w.tag(9, 5)
+			w.f32(charge_speed)
+
+	func _read(r: _Reader) -> void:
+		while not r.at_end():
+			var tag := r.varint()
+			var wt := tag & 7
+			match tag >> 3:
+				1:
+					if wt == 0: swing_ticks = r.uint32()
+					else: r.skip(wt)
+				2:
+					if wt == 0: flourish_ticks = r.uint32()
+					else: r.skip(wt)
+				3:
+					if wt == 0: charge_ticks = r.uint32()
+					else: r.skip(wt)
+				4:
+					if wt == 0: roll_ticks = r.uint32()
+					else: r.skip(wt)
+				5:
+					if wt == 0: roll_cooldown_ticks = r.uint32()
+					else: r.skip(wt)
+				6:
+					if wt == 5: roll_speed = r.f32()
+					else: r.skip(wt)
+				7:
+					if wt == 5: block_speed = r.f32()
+					else: r.skip(wt)
+				8:
+					if wt == 5: swing_speed = r.f32()
+					else: r.skip(wt)
+				9:
+					if wt == 5: charge_speed = r.f32()
+					else: r.skip(wt)
+				_:
+					r.skip(wt)
+
+	func to_bytes() -> PackedByteArray:
+		var w := _Writer.new()
+		_write(w)
+		return w.buf
+
+	# Returns null if the bytes are malformed.
+	static func from_bytes(b: PackedByteArray) -> ActionRules:
+		var m := ActionRules.new()
 		var r := _Reader.new(b, 0, b.size())
 		m._read(r)
 		return null if r.failed else m
@@ -1091,6 +1311,8 @@ class PlayerStatus:
 	var karma: int = 0
 	var resource: int = 0
 	var resource_max: int = 0
+	var multiplier: float = 0.0
+	var combo: int = 0
 
 	func _write(w: _Writer) -> void:
 		if level != 0:
@@ -1123,6 +1345,12 @@ class PlayerStatus:
 		if resource_max != 0:
 			w.tag(10, 0)
 			w.varint(resource_max)
+		if multiplier != 0.0:
+			w.tag(11, 5)
+			w.f32(multiplier)
+		if combo != 0:
+			w.tag(12, 0)
+			w.varint(combo)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -1159,6 +1387,12 @@ class PlayerStatus:
 				10:
 					if wt == 0: resource_max = r.uint32()
 					else: r.skip(wt)
+				11:
+					if wt == 5: multiplier = r.f32()
+					else: r.skip(wt)
+				12:
+					if wt == 0: combo = r.uint32()
+					else: r.skip(wt)
 				_:
 					r.skip(wt)
 
@@ -1183,6 +1417,8 @@ class EntityState:
 	var hp: int = 0
 	var max_hp: int = 0
 	var effects: int = 0
+	var action: int = 0
+	var action_tick: int = 0
 
 	func _write(w: _Writer) -> void:
 		if id != 0:
@@ -1205,6 +1441,12 @@ class EntityState:
 		if effects != 0:
 			w.tag(7, 0)
 			w.varint(effects)
+		if action != 0:
+			w.tag(8, 0)
+			w.varint(action)
+		if action_tick != 0:
+			w.tag(9, 0)
+			w.varint(action_tick)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -1237,6 +1479,12 @@ class EntityState:
 					else: r.skip(wt)
 				7:
 					if wt == 0: effects = r.uint32()
+					else: r.skip(wt)
+				8:
+					if wt == 0: action = r.varint()
+					else: r.skip(wt)
+				9:
+					if wt == 0: action_tick = r.uint32()
 					else: r.skip(wt)
 				_:
 					r.skip(wt)
@@ -1361,6 +1609,8 @@ class CombatEvent:
 	var skill_id: int = 0
 	var amount: int = 0
 	var critical: bool = false
+	var weapon: bool = false
+	var flourish: bool = false
 
 	func _write(w: _Writer) -> void:
 		if kind != 0:
@@ -1381,6 +1631,12 @@ class CombatEvent:
 		if critical != false:
 			w.tag(6, 0)
 			w.boolean(critical)
+		if weapon != false:
+			w.tag(7, 0)
+			w.boolean(weapon)
+		if flourish != false:
+			w.tag(8, 0)
+			w.boolean(flourish)
 
 	func _read(r: _Reader) -> void:
 		while not r.at_end():
@@ -1404,6 +1660,12 @@ class CombatEvent:
 					else: r.skip(wt)
 				6:
 					if wt == 0: critical = r.boolean()
+					else: r.skip(wt)
+				7:
+					if wt == 0: weapon = r.boolean()
+					else: r.skip(wt)
+				8:
+					if wt == 0: flourish = r.boolean()
 					else: r.skip(wt)
 				_:
 					r.skip(wt)

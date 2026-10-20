@@ -1,6 +1,7 @@
 package zone
 
 import (
+	"math"
 	"math/rand/v2"
 
 	pb "convergence/server/gen/convergence/v1"
@@ -34,12 +35,19 @@ func (z *Zone) damage(src, t *entity, skillID uint32, base float64, critical boo
 	amount := max(1, min(int(base*dealt*taken+0.5), t.hp))
 	t.hp -= amount
 	t.lastDamagedTick = tick
+	kind := pb.CombatEventKind_COMBAT_EVENT_KIND_DAMAGE
+	if z.blockedHit {
+		kind = pb.CombatEventKind_COMBAT_EVENT_KIND_BLOCKED
+	}
 	z.events = append(z.events, &pb.CombatEvent{
-		Kind: pb.CombatEventKind_COMBAT_EVENT_KIND_DAMAGE, SourceId: src.id, TargetId: t.id, SkillId: skillID,
-		Amount: uint32(amount), Critical: critical,
+		Kind: kind, SourceId: src.id, TargetId: t.id, SkillId: skillID,
+		Amount: uint32(amount), Critical: critical, Weapon: z.weaponHit, Flourish: z.flourishHit,
 	})
 	if p := t.player; p != nil {
 		p.dirty = true
+		if !z.blockedHit {
+			p.combo = 0 // taking a hit breaks the combat multiplier
+		}
 		if f := z.content.Fate; f != nil && p.woundArmed && t.hp > 0 &&
 			float64(t.hp) < f.Triggers[fate.TriggerWounded].BelowHP*float64(t.maxHP) {
 			p.woundArmed = false
@@ -79,6 +87,8 @@ func (z *Zone) kill(killer, t *entity) {
 	}
 	if p := t.player; p != nil {
 		p.deaths++
+		p.combo = 0
+		z.setAction(t, pb.ActionState_ACTION_STATE_UNSPECIFIED)
 		p.deadUntil = tick + z.ticks(int(z.cfg.RespawnDelay.Milliseconds()))
 		p.pending = p.pending[:0]
 		z.log.Info("player died", "player", describe(t), "killer", describe(killer))
@@ -86,6 +96,7 @@ func (z *Zone) kill(killer, t *entity) {
 }
 
 func (z *Zone) grantExp(p *player, amount int64) {
+	amount = int64(math.Round(float64(amount) * p.multiplier()))
 	p.exp += amount
 	p.dirty = true
 	leveled := false
